@@ -9,6 +9,9 @@ import numpy as np
 import tensorflow as tf
 import sys
 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 
 
 
@@ -310,7 +313,8 @@ if __name__ == '__main__':
     batch_size=batch_size,
     temperature=temperature, top_k=top_k
     )
-    saver = tf.train.Saver()
+    saver = tf.compat.v1.train.Saver()
+    
     ckpt = tf.train.latest_checkpoint(ckpt_path)
     saver.restore(sess, ckpt)
 
