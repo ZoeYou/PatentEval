@@ -1,6 +1,9 @@
 """
 script for evaluating generation quality of claism => abstract for different models
 """
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 import pandas as pd
 import argparse
 import json
@@ -183,10 +186,10 @@ def patent_text_gen(input_text, metadata, direction='forward', gen_count=1):
   return all_results 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--path_data', type=str, default="./test_data.csv")
+parser.add_argument('--path_data', type=str, default="./data/eval_data.csv")
 parser.add_argument('--metric', type=str, required=True, choices={"rouge", "chatgpt" ,"geval"})
 parser.add_argument('--aspect', type=str, required=False, choices={"factuality", "coherence"})
-parser.add_argument('--pretrained_model', type=str, default='M2')
+parser.add_argument('--pretrained_model', type=str, default='M3')
 
 args = parser.parse_args()
 
@@ -207,7 +210,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # download gpt-2 environment
-    proj_folder = '/home/yzuo/scratch/PatEval/gpt-2'
+    proj_folder = '/mnt/beegfs/home/gerdes/multidive/PatentEval/gpt-2'
     git_src = 'https://github.com/openai/gpt-2' 
     if not os.path.exists(proj_folder):
         os.system(f'git clone {git_src}')
@@ -227,7 +230,7 @@ if __name__ == '__main__':
     else:
         print('CPU only.....')    
 
-    src_path = '/home/yzuo/scratch/PatEval/gpt-2/src'
+    src_path = './gpt-2/src'
     if src_path not in sys.path:
         sys.path += [src_path]
 
@@ -253,7 +256,7 @@ if __name__ == '__main__':
     print('Download: ok')
     os.chdir(proj_folder)
 
-    sys.path.append('/home/yzuo/scratch/PatEval/gpt-2/src/')
+    sys.path.append('/mnt/beegfs/home/gerdes/multidive/PatentEval/gpt-2/src')
 
     import encoder, model, sample
 
@@ -302,15 +305,15 @@ if __name__ == '__main__':
     elif length > hparams.n_ctx:
         raise ValueError("Can't get samples longer than window size: %s" % hparams.n_ctx)
 
-    sess = tf.InteractiveSession() 
-    context = tf.placeholder(tf.int32, [batch_size, None])
+    sess = tf.compat.v1.InteractiveSession() 
+    context = tf.compat.v1.placeholder(tf.int32, [batch_size, None])
     sampler = sample.sample_sequence(
     hparams=hparams, length=length,
     context=context,
     batch_size=batch_size,
     temperature=temperature, top_k=top_k
     )
-    saver = tf.train.Saver()
+    saver = tf.compat.v1.train.Saver()
     ckpt = tf.train.latest_checkpoint(ckpt_path)
     saver.restore(sess, ckpt)
 
