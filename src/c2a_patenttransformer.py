@@ -13,6 +13,8 @@ import tensorflow as tf
 import sys
 from tqdm import tqdm
 
+import evaluate
+
 
 # the following code is copied from: 
 # https://stackoverflow.com/questions/25010369/wget-curl-large-file-from-google-drive/39225039#39225039
@@ -330,3 +332,19 @@ if __name__ == '__main__':
             predictions.append(pred)
         df_res = pd.DataFrame({'abstract': predictions})
         df_res.to_csv(path_output, index=False)
+
+    if args.metric == "rouge":
+        scores = []
+        rouge = evaluate.load('rouge')
+        scores.append(rouge.compute(predictions=predictions, references=[[act] for act in actuals])['rougeL'])
+
+        print(args.metric + ":" + str(scores))
+    elif args.metric == "geval":
+        scores = []
+        # TODO
+        print(args.metric + ":" + str(scores))
+
+    elif args.metric == "ipc":
+        scores = []
+        # TODO
+        print(args.metric + ":" + str(scores))
