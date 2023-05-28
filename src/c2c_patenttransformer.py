@@ -1,5 +1,5 @@
 """
-script for evaluating generation quality of claism => abstract for different models
+script for evaluating generation quality of next claim generation
 """
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -13,7 +13,7 @@ import tensorflow as tf
 import sys
 from tqdm import tqdm
 
-import evaluate
+
 
 
 # the following code is copied from: 
@@ -181,9 +181,7 @@ def patent_text_gen(input_text, metadata, direction='forward', gen_count=1):
   return all_results 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--path_data', type=str, default="./data/eval_data.csv")
-parser.add_argument('--metric', type=str, required=True, choices={"rouge", "chatgpt" ,"geval"})
-parser.add_argument('--aspect', type=str, required=False, choices={"factuality", "coherence"})
+parser.add_argument('--path_data', type=str, default="./data/eval_data_c2c.csv")
 parser.add_argument('--pretrained_model', type=str, default='M2')
 parser.add_argument('--path_prediction', type=str, default="./predictions")
 
@@ -191,7 +189,7 @@ args = parser.parse_args()
 
 if __name__ == '__main__':
     df = pd.read_csv(args.path_data)
-    actuals, inputs = df['abstract'].to_list(), df['claims'].to_list()
+    input_claims = df['input_claims'].to_list()
 
     pretrained_model = args.pretrained_model
     # M1: small model for 1976~2016
@@ -207,7 +205,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # download gpt-2 environment
-    proj_folder = '/home/yzuo/scratch/PatentEval/gpt-2'
+    proj_folder = '/mnt/beegfs/home/gerdes/multidive/PatentEval/gpt-2'
     git_src = 'https://github.com/openai/gpt-2' 
     if not os.path.exists(proj_folder):
         os.system(f'git clone {git_src}')
@@ -253,7 +251,7 @@ if __name__ == '__main__':
     print('Download: ok')
     os.chdir(proj_folder)
 
-    sys.path.append('/home/yzuo/scratch/PatentEval/gpt-2/src')
+    sys.path.append('/mnt/beegfs/home/gerdes/multidive/PatentEval/gpt-2/src')
 
     import encoder, model, sample
 
@@ -319,32 +317,18 @@ if __name__ == '__main__':
     path_prediction = args.path_prediction
     if not os.path.isdir(path_prediction):
         os.makedirs(path_prediction)
-    path_output = os.path.join(path_prediction, 'patenttransformer_abstract.pred')
+    path_output = os.path.join(path_prediction, 'patenttransformer_claim.pred')
 
     if os.path.exists(path_output) and os.path.getsize(path_output) > 0:
         df_res = pd.read_csv(path_output)
-        predictions = df_res['abstract'].to_list()
+        predictions = df_res['output_claim'].to_list()
     else:
         predictions = []
-        for claims in tqdm(inputs):
+        for claims in tqdm(input_claims):
             claims = ' '.join(claims.split(' ')[:180])
             pred = text2text_mapping(input_text=claims, mapping='claim2abstract', gen_count=1)[0]
             predictions.append(pred)
-        df_res = pd.DataFrame({'abstract': predictions})
+        df_res = pd.DataFrame({'output_claim': predictions})
         df_res.to_csv(path_output, index=False)
 
-    if args.metric == "rouge":
-        scores = []
-        rouge = evaluate.load('rouge')
-        scores.append(rouge.compute(predictions=predictions, references=[[act] for act in actuals])['rougeL'])
 
-        print(args.metric + ":" + str(scores))
-    elif args.metric == "geval":
-        scores = []
-        # TODO
-        print(args.metric + ":" + str(scores))
-
-    elif args.metric == "ipc":
-        scores = []
-        # TODO
-        print(args.metric + ":" + str(scores))
