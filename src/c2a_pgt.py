@@ -1,10 +1,10 @@
 """
-script for evaluating generation quality of claism => abstract for different models
+script for evaluating generation quality of claims => abstract for different models
 """
 
 import torch
 
-import argparse, os, requests, time, json
+import argparse, os
 import pandas as pd
 from tqdm import tqdm
 
@@ -15,7 +15,6 @@ import evaluate
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--path_data', type=str, default="./data/eval_data.csv")
-parser.add_argument('--metric', type=str, required=True, choices={"rouge", "chatgpt" ,"geval"})
 parser.add_argument('--aspect', type=str, required=False, choices={"factuality", "coherence"})
 parser.add_argument('--path_prediction', type=str, default="./predictions")
 
@@ -46,10 +45,6 @@ if __name__ == '__main__':
             c = ' '.join(c.split(' ')[:180])
             input = f"{c} <|sep|> Given the above claims, suggest an abstract <|sep|>"
             text_encoded = tokenizer.encode(input, max_length = 512, return_tensors="pt").to(device)
-
-            # decoded = tokenizer.decode(text_encoded['input_ids']) 
-            # print(decoded)
-            # print(input)
             generated = model.generate(text_encoded, do_sample=True, top_k=5, num_return_sequences = 1, max_length=1024)
             generated_text = [tokenizer.decode(case).split("<|endoftext|>")[0].strip() for case in generated][0].split('<|sep|>')[-1]
 
@@ -57,14 +52,8 @@ if __name__ == '__main__':
         df_res = pd.DataFrame({'abstract': predictions})
         df_res.to_csv(path_output, index=False)
 
-
-    if args.metric == "rouge":
-        scores = []
-        rouge = evaluate.load('rouge')
-        scores.append(rouge.compute(predictions=predictions, references=[[act] for act in actuals])['rougeL'])
-
-        print(args.metric + ":" + str(scores))
-    elif args.metric == "chatgpt":
-        pass
-
-
+    scores = []
+    rouge = evaluate.load('rouge')
+    scores.append(rouge.compute(predictions=predictions, references=[[act] for act in actuals])['rougeL'])
+    
+    print("rouge :" + str(scores))

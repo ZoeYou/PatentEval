@@ -1,5 +1,5 @@
 """
-script for evaluating generation quality of claism => abstract for different models
+script for evaluating generation quality of claims => abstract for different models
 """
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -182,7 +182,6 @@ def patent_text_gen(input_text, metadata, direction='forward', gen_count=1):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--path_data', type=str, default="./data/eval_data.csv")
-parser.add_argument('--metric', type=str, required=True, choices={"rouge", "chatgpt" ,"geval"})
 parser.add_argument('--aspect', type=str, required=False, choices={"factuality", "coherence"})
 parser.add_argument('--pretrained_model', type=str, default='M2')
 parser.add_argument('--path_prediction', type=str, default="./predictions")
@@ -333,18 +332,9 @@ if __name__ == '__main__':
         df_res = pd.DataFrame({'abstract': predictions})
         df_res.to_csv(path_output, index=False)
 
-    if args.metric == "rouge":
-        scores = []
-        rouge = evaluate.load('rouge')
-        scores.append(rouge.compute(predictions=predictions, references=[[act] for act in actuals])['rougeL'])
+    scores = []
+    rouge = evaluate.load('rouge')
+    scores.append(rouge.compute(predictions=predictions, references=[[act] for act in actuals])['rougeL'])
 
-        print(args.metric + ":" + str(scores))
-    elif args.metric == "geval":
-        scores = []
-        # TODO
-        print(args.metric + ":" + str(scores))
-
-    elif args.metric == "ipc":
-        scores = []
-        # TODO
-        print(args.metric + ":" + str(scores))
+    print("rouge :" + str(scores))
+  

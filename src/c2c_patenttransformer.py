@@ -104,7 +104,7 @@ def text2text_mapping(input_text, mapping, gen_count=1):
   all_results = []
   if mapping == 'dep':
     meta1 = meta2 = 'claim'
-    print('[ dependent claim ]')
+    # print('[ dependent claim ]')
   else:
     meta1, meta2 = mapping.split('2')
     print('[ %s --> %s ]' % (meta1, meta2))
@@ -205,7 +205,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # download gpt-2 environment
-    proj_folder = '/mnt/beegfs/home/gerdes/multidive/PatentEval/gpt-2'
+    proj_folder = '/home/yzuo/scratch/PatentEval/gpt-2'
     git_src = 'https://github.com/openai/gpt-2' 
     if not os.path.exists(proj_folder):
         os.system(f'git clone {git_src}')
@@ -251,7 +251,7 @@ if __name__ == '__main__':
     print('Download: ok')
     os.chdir(proj_folder)
 
-    sys.path.append('/mnt/beegfs/home/gerdes/multidive/PatentEval/gpt-2/src')
+    sys.path.append('/home/yzuo/scratch/PatentEval/gpt-2/src')
 
     import encoder, model, sample
 
@@ -326,7 +326,7 @@ if __name__ == '__main__':
         predictions = []
         for claims in tqdm(input_claims):
             claims = ' '.join(claims.split(' ')[:180])
-            pred = text2text_mapping(input_text=claims, mapping='claim2abstract', gen_count=1)[0]
+            pred = text2text_mapping(input_text=claims, mapping='dep', gen_count=1)[0]
             predictions.append(pred)
         df_res = pd.DataFrame({'output_claim': predictions})
         df_res.to_csv(path_output, index=False)
