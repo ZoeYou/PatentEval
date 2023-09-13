@@ -1,5 +1,5 @@
 """
-script for evaluating generation quality of claims => abstract for different models
+tensorflow==1.15.0
 """
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -8,8 +8,7 @@ import pandas as pd
 import argparse
 import json
 import os
-import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
 import sys
 from tqdm import tqdm
 
@@ -180,9 +179,22 @@ def patent_text_gen(input_text, metadata, direction='forward', gen_count=1):
 
   return all_results 
 
+def get_abstract(claims, maxsize=512, numberTries=0, max_retries=5):
+  if numberTries >= max_retries:
+    print("Error: Retrying too many times! Please check the format of the input text!")
+    return ""
+  else:
+    claims = ' '.join(claims.split(' ')[:maxsize])
+    maxsize = int(len(claims.split(" ")) // 2)
+    try:
+        pred = text2text_mapping(input_text=claims, mapping='claim2abstract', gen_count=1)[0]
+        return pred
+    except:
+        return get_abstract(claims, numberTries=numberTries+1, maxsize=maxsize)
+      
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--path_data', type=str, default="./data/eval_data.csv")
-parser.add_argument('--aspect', type=str, required=False, choices={"factuality", "coherence"})
 parser.add_argument('--pretrained_model', type=str, default='M2')
 parser.add_argument('--path_prediction', type=str, default="./predictions")
 
@@ -192,127 +204,127 @@ if __name__ == '__main__':
     df = pd.read_csv(args.path_data)
     actuals, inputs = df['abstract'].to_list(), df['claims'].to_list()
 
-    pretrained_model = args.pretrained_model
-    # M1: small model for 1976~2016
-    # M2: medium model for 1976~2016
-    # M3: small model for 2016
-    # M4: medium model for 2016
-    if pretrained_model in ['M1', 'M3']:
-        model_name= '124M'
-    elif pretrained_model in ['M2', 'M4']:
-        model_name= '355M'
-    else:
-        print('unknown mode: %s' % pretrained_model)
-        sys.exit(1)
+    # pretrained_model = args.pretrained_model
+    # # M1: small model for 1976~2016
+    # # M2: medium model for 1976~2016
+    # # M3: small model for 2016
+    # # M4: medium model for 2016
+    # if pretrained_model in ['M1', 'M3']:
+    #     model_name= '124M'
+    # elif pretrained_model in ['M2', 'M4']:
+    #     model_name= '355M'
+    # else:
+    #     print('unknown mode: %s' % pretrained_model)
+    #     sys.exit(1)
 
-    # download gpt-2 environment
-    proj_folder = '/home/yzuo/scratch/PatentEval/gpt-2'
-    git_src = 'https://github.com/openai/gpt-2' 
-    if not os.path.exists(proj_folder):
-        os.system(f'git clone {git_src}')
-    else:
-        print('existed: %s' % proj_folder)
-    os.chdir(proj_folder)  
-    os.system('git pull origin master')
+    # # download gpt-2 environment
+    # proj_folder = '/home/yzuo/scratch/PatentEval/gpt-2'
+    # git_src = 'https://github.com/openai/gpt-2' 
+    # if not os.path.exists(proj_folder):
+    #     os.system(f'git clone {git_src}')
+    # else:
+    #     print('existed: %s' % proj_folder)
+    # os.chdir(proj_folder)  
+    # os.system('git pull origin master')
 
-    os.chdir(proj_folder)
-    os.system('pip3 install -r requirements.txt')
+    # os.chdir(proj_folder)
+    # os.system('pip3 install -r requirements.txt')
 
-    print('tf version: %s' % tf.__version__)
-    device_name = tf.test.gpu_device_name()
-    if 'GPU' in device_name:
-        print('GPU ready: %s' % device_name) 
-        GPU_FLAG = True
-    else:
-        print('CPU only.....')    
+    # print('tf version: %s' % tf.__version__)
+    # device_name = tf.test.gpu_device_name()
+    # if 'GPU' in device_name:
+    #     print('GPU ready: %s' % device_name) 
+    #     GPU_FLAG = True
+    # else:
+    #     print('CPU only.....')    
 
-    src_path = './gpt-2/src'
-    if src_path not in sys.path:
-        sys.path += [src_path]
+    # src_path = './gpt-2/src'
+    # if src_path not in sys.path:
+    #     sys.path += [src_path]
 
-    os.chdir(proj_folder)
-    if os.path.exists(os.path.join('models', model_name)) == False:
-        print('download model %s....' % model_name)
-        os.system(f'PYTHONPATH=src; python ./download_model.py {model_name}')
-    else:
-        print('existed: model %s' % model_name)  
+    # os.chdir(proj_folder)
+    # if os.path.exists(os.path.join('models', model_name)) == False:
+    #     print('download model %s....' % model_name)
+    #     os.system(f'PYTHONPATH=src; python ./download_model.py {model_name}')
+    # else:
+    #     print('existed: model %s' % model_name)  
 
-    # donwload fine-tuned model for patents
-    ckpt_path = os.path.join(proj_folder, 'saved_checkpoint_%s' % model_name)
-    if os.path.exists(ckpt_path):
-        print('Existed: %s' % ckpt_path)
-        os.system(f'ls {ckpt_path}')
-    else:
-        os.mkdir(ckpt_path)
-        os.chdir(ckpt_path)
-        print('Downloading files to %s....' % ckpt_path)
-        for k, v in download_links[pretrained_model].items():
-            download_file_from_google_drive(v, k)
-        os.system('ls -al')
-    print('Download: ok')
-    os.chdir(proj_folder)
+    # # donwload fine-tuned model for patents
+    # ckpt_path = os.path.join(proj_folder, 'saved_checkpoint_%s' % model_name)
+    # if os.path.exists(ckpt_path):
+    #     print('Existed: %s' % ckpt_path)
+    #     os.system(f'ls {ckpt_path}')
+    # else:
+    #     os.mkdir(ckpt_path)
+    #     os.chdir(ckpt_path)
+    #     print('Downloading files to %s....' % ckpt_path)
+    #     for k, v in download_links[pretrained_model].items():
+    #         download_file_from_google_drive(v, k)
+    #     os.system('ls -al')
+    # print('Download: ok')
+    # os.chdir(proj_folder)
 
-    sys.path.append('/home/yzuo/scratch/PatentEval/gpt-2/src')
+    # sys.path.append('/home/yzuo/scratch/PatentEval/gpt-2/src')
 
-    import encoder, model, sample
+    # import encoder, model, sample
 
-    foward_start_tags = {'title':'<|startoftitle|>', \
-                        'abstract':'<|startofabstract|>', \
-                        'claim': '<|startoftext|>', \
-                        'dep': '<|startoftext|>'}
-    foward_end_tags = {'title':'<|endoftitle|>', 
-                    'abstract':'<|endofabstract|>', \
-                    'claim': '<|endoftext|>', \
-                    'dep': '<|startoftext|>'}
-    backward_start_tags = {'title':'<|backwardtitlestart>', \
-                        'abstract':'<|backwardabstractstart>', \
-                        'claim': '<|startofbackward|>'}
-    backward_end_tags = {'title':'<|backwardtitleend|>', \
-                    'abstract':'<|backwardabstractend|>', \
-                    'claim': '<|endofbackward|>'}
+    # foward_start_tags = {'title':'<|startoftitle|>', \
+    #                     'abstract':'<|startofabstract|>', \
+    #                     'claim': '<|startoftext|>', \
+    #                     'dep': '<|startoftext|>'}
+    # foward_end_tags = {'title':'<|endoftitle|>', 
+    #                 'abstract':'<|endofabstract|>', \
+    #                 'claim': '<|endoftext|>', \
+    #                 'dep': '<|startoftext|>'}
+    # backward_start_tags = {'title':'<|backwardtitlestart>', \
+    #                     'abstract':'<|backwardabstractstart>', \
+    #                     'claim': '<|startofbackward|>'}
+    # backward_end_tags = {'title':'<|backwardtitleend|>', \
+    #                 'abstract':'<|backwardabstractend|>', \
+    #                 'claim': '<|endofbackward|>'}
 
-    # text2text mapping
-    tag_title2abstract = '<|title2abstract|>'
-    tag_abstract2title = '<|abstract2title|>'
-    tag_abstract2claim = '<|abstract2claim|>'
-    tag_claim2abstract = '<|claim2abstract|>'
-    dep_separator = '<|dep|>'
+    # # text2text mapping
+    # tag_title2abstract = '<|title2abstract|>'
+    # tag_abstract2title = '<|abstract2title|>'
+    # tag_abstract2claim = '<|abstract2claim|>'
+    # tag_claim2abstract = '<|claim2abstract|>'
+    # dep_separator = '<|dep|>'
 
-    seed=None
-    nsamples=1
-    batch_size=1
-    length=None
-    temperature=1
-    top_k=40
+    # seed=None
+    # nsamples=1
+    # batch_size=1
+    # length=None
+    # temperature=1
+    # top_k=40
 
-    models_dir = 'models'
-    models_dir = os.path.expanduser(os.path.expandvars(models_dir))
-    if batch_size is None:
-        batch_size = 1
-    assert nsamples % batch_size == 0
+    # models_dir = 'models'
+    # models_dir = os.path.expanduser(os.path.expandvars(models_dir))
+    # if batch_size is None:
+    #     batch_size = 1
+    # assert nsamples % batch_size == 0
 
-    enc = encoder.get_encoder(model_name, models_dir)
-    hparams = model.default_hparams()
-    with open(os.path.join(models_dir, model_name, 'hparams.json')) as f:
-        hparams.override_from_dict(json.load(f))
+    # enc = encoder.get_encoder(model_name, models_dir)
+    # hparams = model.default_hparams()
+    # with open(os.path.join(models_dir, model_name, 'hparams.json')) as f:
+    #     hparams.override_from_dict(json.load(f))
 
-    if length is None:
-        length = hparams.n_ctx // 2
-    elif length > hparams.n_ctx:
-        raise ValueError("Can't get samples longer than window size: %s" % hparams.n_ctx)
+    # if length is None:
+    #     length = hparams.n_ctx // 2
+    # elif length > hparams.n_ctx:
+    #     raise ValueError("Can't get samples longer than window size: %s" % hparams.n_ctx)
 
-    sess = tf.compat.v1.InteractiveSession() 
-    context = tf.compat.v1.placeholder(tf.int32, [batch_size, None])
-    sampler = sample.sample_sequence(
-    hparams=hparams, length=length,
-    context=context,
-    batch_size=batch_size,
-    temperature=temperature, top_k=top_k
-    )
-    saver = tf.compat.v1.train.Saver()
+    # sess = tf.compat.v1.InteractiveSession() 
+    # context = tf.compat.v1.placeholder(tf.int32, [batch_size, None])
+    # sampler = sample.sample_sequence(
+    # hparams=hparams, length=length,
+    # context=context,
+    # batch_size=batch_size,
+    # temperature=temperature, top_k=top_k
+    # )
+    # saver = tf.compat.v1.train.Saver()
 
-    ckpt = tf.compat.v1.train.latest_checkpoint(ckpt_path)
-    saver.restore(sess, ckpt)
+    # ckpt = tf.compat.v1.train.latest_checkpoint(ckpt_path)
+    # saver.restore(sess, ckpt)
 
     # make prediction directory 
     path_prediction = args.path_prediction
@@ -326,8 +338,7 @@ if __name__ == '__main__':
     else:
         predictions = []
         for claims in tqdm(inputs):
-            claims = ' '.join(claims.split(' ')[:180])
-            pred = text2text_mapping(input_text=claims, mapping='claim2abstract', gen_count=1)[0]
+            pred = get_abstract(claims)
             predictions.append(pred)
         df_res = pd.DataFrame({'abstract': predictions})
         df_res.to_csv(path_output, index=False)
@@ -337,4 +348,4 @@ if __name__ == '__main__':
     scores.append(rouge.compute(predictions=predictions, references=[[act] for act in actuals])['rougeL'])
 
     print("rouge :" + str(scores))
-  
+

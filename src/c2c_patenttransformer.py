@@ -1,6 +1,3 @@
-"""
-script for evaluating generation quality of next claim generation
-"""
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -8,12 +5,9 @@ import pandas as pd
 import argparse
 import json
 import os
-import numpy as np
 import tensorflow as tf
 import sys
 from tqdm import tqdm
-
-
 
 
 # the following code is copied from: 
@@ -180,6 +174,21 @@ def patent_text_gen(input_text, metadata, direction='forward', gen_count=1):
 
   return all_results 
 
+
+def get_claim(claims, maxsize=512, numberTries=0, max_retries=5):
+  if numberTries >= max_retries:
+    print("Error: Retrying too many times! Please check the format of the input text!")
+    return ""
+  else:
+    claims = ' '.join(claims.split(' ')[:maxsize])
+    maxsize = int(len(claims.split(" ")) // 2)
+    try:
+        pred = text2text_mapping(input_text=claims, mapping='dep', gen_count=1)[0]
+        return pred
+    except:
+        return get_claim(claims, numberTries=numberTries+1, maxsize=maxsize)
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--path_data', type=str, default="./data/eval_data_c2c.csv")
 parser.add_argument('--pretrained_model', type=str, default='M2')
@@ -189,7 +198,7 @@ args = parser.parse_args()
 
 if __name__ == '__main__':
     df = pd.read_csv(args.path_data)
-    input_claims = df['input_claims'].to_list()
+    input_claims = df['input_claims'].fillna('').to_list()
 
     pretrained_model = args.pretrained_model
     # M1: small model for 1976~2016
@@ -325,10 +334,7 @@ if __name__ == '__main__':
     else:
         predictions = []
         for claims in tqdm(input_claims):
-            claims = ' '.join(claims.split(' ')[:180])
-            pred = text2text_mapping(input_text=claims, mapping='dep', gen_count=1)[0]
+            pred = get_claim(claims)
             predictions.append(pred)
         df_res = pd.DataFrame({'output_claim': predictions})
         df_res.to_csv(path_output, index=False)
-
-

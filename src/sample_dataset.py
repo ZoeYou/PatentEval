@@ -75,7 +75,7 @@ df = pd.read_csv('./data/eval_data.csv')
 domains = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 for d in domains:
     sub_df = df[df['domain']==d]
-    nb_claims = sub_df['claims'].apply(lambda c: len(re.findall('\d+. [AT]', c)))
+    nb_claims = sub_df['claims'].apply(lambda c: len(re.findall('\d+\. [AT]', c)))
     nb_words_claims = sub_df['claims'].apply(lambda x: len(word_tokenize(x)))
     nb_words_abstract = sub_df['abstract'].apply(lambda x: len(word_tokenize(x)))
     print('domain:', d)

@@ -106,6 +106,7 @@ class NegateSentences(Transformation):
 
     def __negate_sentences(self, claim):
         # find negatable token, return None if no candiates found
+        if isinstance(claim, str): claim = self.spacy(claim)
         candidate_tokens = [token for token in claim if token.text in self.__negatable_tokens]
 
         if not candidate_tokens:
@@ -190,6 +191,8 @@ class Backtranslation(Transformation):
         # chose destination language, passed or random from list
         dst_lang = self.dst_lang if self.dst_lang else random.choice(self.accepted_langs)
 
+        if isinstance(claim, str):   claim = self.spacy(claim)
+
         # translate to intermediate language and back
         claim_trans = self.translator.translate(claim.text, target_language=dst_lang, format_="text")
         claim_btrans = self.translator.translate(claim_trans["translatedText"], target_language=self.src_lang, format_="text")
@@ -237,6 +240,7 @@ class PronounSwap(Transformation):
 
     def __swap_pronouns(self, claim):
         # find pronouns
+        if isinstance(claim, str): claim = self.spacy(claim)
         claim_pronouns = [token for token in claim if token.text.lower() in self.pronouns]
 
         if not claim_pronouns:
@@ -294,6 +298,9 @@ class NERSwap(Transformation):
 
     def __swap_entities(self, text, claim):
         # find entities in given category
+        if isinstance(text, str): text = self.spacy(text)
+        if isinstance(claim, str): claim = self.spacy(claim)
+
         text_ents = [ent for ent in text.ents if ent.label_ in self.categories]
         claim_ents = [ent for ent in claim.ents if ent.label_ in self.categories]
 
@@ -375,8 +382,7 @@ class AddNoise(Transformation):
             return None
 
     def __add_noise(self, claim, aug_span):
-        if isinstance(claim, str):
-            claim = self.spacy(claim)
+        if isinstance(claim, str):   claim = self.spacy(claim)
         claim_tokens = [token.text_with_ws for token in claim]
 
         new_claim = []

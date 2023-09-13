@@ -5,7 +5,7 @@ create dataset for next claim generation
 import pandas as pd
 import re, random
 
-pattern_claim = '\d+\. (?!\(canceled\))'
+pattern_claim = '\d+\. [AT]' #'\d+\. (?!\(canceled\))'
 df = pd.read_csv('./data/eval_data.csv')
 
 inputs = []

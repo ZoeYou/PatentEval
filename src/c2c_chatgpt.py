@@ -1,78 +1,55 @@
-"""
-script for evaluating generation quality of next claim generation
-"""
 import pandas as pd
-import argparse, os
-import json, time
-import requests
+import argparse, os, re
+import openai
+import time, random
 from tqdm import tqdm
-import re
 
+from openai.error import *
 
+openai.api_key = "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"
 
-def generate_chat_completion(messages, model="gpt-3.5-turbo", temperature=0, max_tokens=None):
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {API_KEY}",
-    }
+def generate_claim(claims, numberTries=0, gptChoice=0, maxsize=4097, exponential_base: float = 2, jitter: bool = True, max_retries: int = 5):
+    prompt = "Based on the provided patent claims below, please draft the subsequent claim for a continuation. This claim, which may be either dependent or independent, should be precise, legally sound, and in line with patent claim drafting conventions. Use the existing claims as a basis for your draft.\n" \
+        + "Claims: {claims}"
 
-    data = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-    }
-
-    if max_tokens is not None:
-        data["max_tokens"] = max_tokens
-
-    response = requests.post(API_ENDPOINT, headers=headers, data=json.dumps(data))
-
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    elif response.status_code == 400:
-        print(f"Error {response.status_code}: {response.text}")
-        return response.status_code
-    elif response.status_code == 429:
-        time.sleep(30)
-        return generate_chat_completion(messages)   
+    if numberTries >= max_retries:
+        print("Error: Retrying too many times! Please check the format of the input text!")
+        return ""
     else:
-        raise Exception(f"Error {response.status_code}: {response.text}")
+        model_name = "gpt-3.5-turbo-0613"
+        claims = " ".join(claims.split(" ")[:maxsize])
+        content = prompt.format(claims=claims)
+        maxsize = int(len(claims.split(" ")) // 2)
+    
+    try:
+        completion = openai.ChatCompletion.create(
+                model=model_name,
+                temperature=0.0,
+                messages=[
+                # {"role": "system", "content": "You are a professional patent attorney."},
+                {"role": "user", "content": content}]
+                )
+        return completion['choices'][0]['message']['content']
+    except Exception as e:
+        print(e)
+        if isinstance(e, RateLimitError):
+            delay = exponential_base * (1 + jitter * random.random())
+            time.sleep(delay)
+            return generate_claim(claims, gptChoice=gptChoice, numberTries=numberTries+1, maxsize=maxsize)
+        else:
+            return generate_claim(claims, gptChoice=gptChoice+1, numberTries=numberTries+1, maxsize=maxsize)
 
 
-def generate_claim(claims):
-    messages = [
-        {"role": "user", "content": f"Based on the provided patent claims below, please draft the subsequent claim for a continuation. This claim, which may be either dependent or independent, should be precise, legally sound, and in line with patent claim drafting conventions. Use the existing claims as a basis for your draft.\n" \
-        + f'Claims: {claims}'}]
-    response_text = generate_chat_completion(messages)
-
-    cnt, nb_words = 0, 3000
-    while response_text == 400 and cnt <= 5:
-        claims = ' '.join(claims.split(' ')[:nb_words])
-        messages = [
-            {"role": "user", "content": f"Based on the provided patent claims below, please draft the subsequent claim for a continuation. This claim, which may be either dependent or independent, should be precise, legally sound, and in line with patent claim drafting conventions. Use the existing claims as a basis for your draft.\n" \
-            + f'Claims: {claims}'}]
-
-        response_text = generate_chat_completion(messages)
-        cnt += 1
-        nb_words = nb_words//2
-
-    if response_text == 400: response_text = ' '
-    return response_text
-
-API_KEY = "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"
-API_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--path_data', type=str, default="./data/eval_data_c2c.csv")
 parser.add_argument('--path_prediction', type=str, default="./predictions")
 
-
 args = parser.parse_args()
 
 if __name__ == '__main__':
     df = pd.read_csv(args.path_data)
-
-    input_claims = df['input_claims'].to_list()
+    input_claims = df['input_claims'].fillna('').to_list()
 
     # make prediction directory 
     path_prediction = args.path_prediction
@@ -82,6 +59,10 @@ if __name__ == '__main__':
 
     predictions = []
     for c in tqdm(input_claims):
+        if len(c) < 10: 
+            predictions.append("")  # given empty claim
+            continue
+        
         pred = generate_claim(c)
         predictions.append(pred)
 
