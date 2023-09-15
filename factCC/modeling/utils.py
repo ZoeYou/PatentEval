@@ -163,17 +163,13 @@ class FactCCManualProcessor(DataProcessor):
     def _create_examples(self, lines, set_type):
         """Creates examples for the training and dev sets."""
         examples = []
-        orig_ids = []   # added by zuoyou
         for (i, example) in enumerate(lines):
-            id = example["id"]
-            orig_ids.append(id)
-
             guid = str(i)
             text_a = example["text"]
             text_b = example["claim"]
             label = example["label"]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-        return examples, orig_ids
+        return examples
 
 
 def convert_examples_to_features(examples, label_list, max_seq_length,
@@ -380,43 +376,19 @@ def pearson_and_spearman(preds, labels):
     }
 
 
-def split_id_list(list_of_id, list_to_split):
-    result = {}
-    for item in list_of_id:
-        key = item.split('-')[0]
-        if key in result:
-            result[key].append(list_of_id.index(item))
-        else:
-            result[key] = [list_of_id.index(item)]
-    output = list(result.values())
-
-    split_list = []
-    for indices in output:
-        split_list.append([list_to_split[i] for i in indices])
-    return split_list
-
-
-def complex_metric(preds, labels, prefix="", original_ids=None):
-
-    if original_ids:
-        split_preds = split_id_list(original_ids, preds)
-        split_labels = split_id_list(original_ids, labels)
-
-        preds = [(0 if all([pp == 0 for pp in p]) else 1) for p in split_preds]
-        labels = [(0 if all([pp == 0 for pp in p]) else 1) for p in split_labels]
-
+def complex_metric(preds, labels, prefix=""):
     return {
         prefix + "bacc": balanced_accuracy_score(y_true=labels, y_pred=preds),
         prefix + "f1":   f1_score(y_true=labels, y_pred=preds, average="micro")
     }
 
 
-def compute_metrics(task_name, preds, labels, original_ids, prefix=""):
+def compute_metrics(task_name, preds, labels, prefix=""):
     assert len(preds) == len(labels)
     if task_name == "factcc_generated":
         return complex_metric(preds, labels, prefix)
     elif task_name == "factcc_annotated":
-        return complex_metric(preds, labels, prefix, original_ids)
+        return complex_metric(preds, labels, prefix)
     else:
         raise KeyError(task_name)
 

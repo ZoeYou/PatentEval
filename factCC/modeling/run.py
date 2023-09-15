@@ -25,7 +25,6 @@ import random
 
 import wandb
 import numpy as np
-import pandas as pd
 import torch
 
 from model import BertPointer
@@ -190,13 +189,13 @@ def train(args, train_dataset, model, tokenizer):
 
         if args.local_rank in [-1, 0]:
             # Save model checkpoint
-            checkpoint_dir = os.path.join(args.checkpoint_dir, 'checkpoint-{}'.format(epoch_ix))
-            if not os.path.exists(checkpoint_dir):
-                os.makedirs(checkpoint_dir)
+            output_dir = os.path.join(args.output_dir, 'checkpoint-{}'.format(epoch_ix))
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
             model_to_save = model.module if hasattr(model, 'module') else model  # Take care of distributed/parallel training
-            model_to_save.save_pretrained(checkpoint_dir)
-            torch.save(args, os.path.join(checkpoint_dir, 'training_args.bin'))
-            logger.info("Saving model checkpoint to %s", checkpoint_dir)
+            model_to_save.save_pretrained(output_dir)
+            torch.save(args, os.path.join(output_dir, 'training_args.bin'))
+            logger.info("Saving model checkpoint to %s", output_dir)
 
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()
@@ -213,7 +212,7 @@ def evaluate(args, model, tokenizer, prefix=""):
     results = {}
     cnt = 0
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_dataset, original_ids = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True)
+        eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True)
 
         if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
             os.makedirs(eval_output_dir)
@@ -233,8 +232,6 @@ def evaluate(args, model, tokenizer, prefix=""):
         preds = None
         out_label_ids = None
 
-        ext_starts, ext_ends, aug_starts, aug_ends = [], [], [], []
-
         for batch in tqdm(eval_dataloader, desc="Evaluating"):
             model.eval()
             batch = tuple(t.to(args.device) for t in batch)
@@ -247,56 +244,22 @@ def evaluate(args, model, tokenizer, prefix=""):
                 tmp_eval_loss = outputs[0]
                 logits_ix = 1 if args.model_type == "bert" else 7
                 logits = outputs[logits_ix]
-
-                span_logits = outputs[8:12]
-
                 eval_loss += tmp_eval_loss.mean().item()
                 nb_eval_steps += 1
 
             if preds is None:
                 preds = logits.detach().cpu().numpy()
                 out_label_ids = inputs['labels'].detach().cpu().numpy()
-
-                # added by zuoyou 27/06/2023 to get the positions of extraction and augmentation
-                span_logits = [torch.squeeze(span).detach().cpu().numpy() for span in span_logits]
-
-                ext_starts.append(span_logits[0])
-                ext_ends.append(span_logits[1])        
-                aug_starts.append(span_logits[2])
-                aug_ends.append(span_logits[3])
-                
             else:
                 preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
                 out_label_ids = np.append(out_label_ids, inputs['labels'].detach().cpu().numpy(), axis=0)
 
-                # added by zuoyou 27/06/2023 to get the positions of extraction and augmentation
-                span_logits = [torch.squeeze(span).detach().cpu().numpy() for span in span_logits]
-
-                ext_starts.append(span_logits[0])
-                ext_ends.append(span_logits[1])        
-                aug_starts.append(span_logits[2])
-                aug_ends.append(span_logits[3])
-
         preds = np.argmax(preds, axis=1)
-
-        ext_starts, ext_ends, aug_starts, aug_ends = np.vstack(ext_starts), np.vstack(ext_ends), np.vstack(aug_starts), np.vstack(aug_ends)
-        ext_starts, ext_ends, aug_starts, aug_ends = np.argmax(ext_starts, axis=1), np.argmax(ext_ends, axis=1), np.argmax(aug_starts, axis=1), np.argmax(aug_ends, axis=1)
-
-        result = compute_metrics(args.task_name, preds, out_label_ids, original_ids)  # weighted metric
+        result = compute_metrics(args.task_name, preds, out_label_ids)
         eval_loss = eval_loss / nb_eval_steps
         result["loss"] = eval_loss
         results.update(result)
 
-        spans_df = pd.DataFrame({
-            'labels': preds,
-            'actuals': out_label_ids,
-            'extraction_start': ext_starts,
-            'extraction_ends': ext_ends,
-            'augmentation_starts': aug_starts,
-            'augmentation_ends': aug_ends
-            })
-        
-        spans_df.to_csv(os.path.join(eval_output_dir, "eval_spans.csv"), index=False)
         output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
         with open(output_eval_file, "w") as writer:
             logger.info("***** Eval results {} *****".format(prefix))
@@ -319,25 +282,25 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
         list(filter(None, args.model_name_or_path.split('/'))).pop(),
         str(args.max_seq_length),
         str(task)))
-    # if os.path.exists(cached_features_file):
-    #     logger.info("Loading features from cached file %s", cached_features_file)
-    #     features = torch.load(cached_features_file)
-    # else:
-    logger.info("Creating features from dataset file at %s", args.data_dir)
-    label_list = processor.get_labels()
-    examples, original_ids = processor.get_dev_examples(args.data_dir) if evaluate else processor.get_train_examples(args.data_dir)
-    features = convert_examples_to_features(examples, label_list, args.max_seq_length, tokenizer, output_mode,
-        cls_token_at_end=bool(args.model_type in ['xlnet']),            # xlnet has a cls token at the end
-        cls_token=tokenizer.cls_token,
-        cls_token_segment_id=2 if args.model_type in ['xlnet'] else 0,
-        sep_token=tokenizer.sep_token,
-        sep_token_extra=bool(args.model_type in ['roberta']),
-        pad_on_left=bool(args.model_type in ['xlnet']),                 # pad on the left for xlnet
-        pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0],
-        pad_token_segment_id=4 if args.model_type in ['xlnet'] else 0)
-    if args.local_rank in [-1, 0]:
-        logger.info("Saving features into cached file %s", cached_features_file)
-        torch.save(features, cached_features_file)
+    if os.path.exists(cached_features_file):
+        logger.info("Loading features from cached file %s", cached_features_file)
+        features = torch.load(cached_features_file)
+    else:
+        logger.info("Creating features from dataset file at %s", args.data_dir)
+        label_list = processor.get_labels()
+        examples = processor.get_dev_examples(args.data_dir) if evaluate else processor.get_train_examples(args.data_dir)
+        features = convert_examples_to_features(examples, label_list, args.max_seq_length, tokenizer, output_mode,
+            cls_token_at_end=bool(args.model_type in ['xlnet']),            # xlnet has a cls token at the end
+            cls_token=tokenizer.cls_token,
+            cls_token_segment_id=2 if args.model_type in ['xlnet'] else 0,
+            sep_token=tokenizer.sep_token,
+            sep_token_extra=bool(args.model_type in ['roberta']),
+            pad_on_left=bool(args.model_type in ['xlnet']),                 # pad on the left for xlnet
+            pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0],
+            pad_token_segment_id=4 if args.model_type in ['xlnet'] else 0)
+        if args.local_rank in [-1, 0]:
+            logger.info("Saving features into cached file %s", cached_features_file)
+            torch.save(features, cached_features_file)
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
@@ -361,7 +324,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids,
                             all_ext_mask, all_ext_start_ids, all_ext_end_ids,
                             all_aug_mask, all_aug_start_ids, all_aug_end_ids)
-    return dataset, original_ids
+    return dataset
 
 
 def main():
@@ -376,10 +339,8 @@ def main():
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
     parser.add_argument("--task_name", default=None, type=str, required=True,
                         help="The name of the task to train selected in the list: " + ", ".join(processors.keys()))
-    parser.add_argument("--checkpoint_dir", default=None, type=str, required=True,
+    parser.add_argument("--output_dir", default=None, type=str, required=True,
                         help="The output directory where the model predictions and checkpoints will be written.")
-    parser.add_argument("--output_dir", default=None, type=str, required=True)
-
     parser.add_argument("--train_from_scratch", action='store_true',
 			help="Whether to run training without loading pretrained weights.")
 
@@ -449,8 +410,8 @@ def main():
                         help="For distributed training: local_rank")
     args = parser.parse_args()
 
-    if os.path.exists(args.checkpoint_dir) and os.listdir(args.checkpoint_dir) and args.do_train and not args.overwrite_output_dir:
-        raise ValueError("Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(args.checkpoint_dir))
+    if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train and not args.overwrite_output_dir:
+        raise ValueError("Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(args.output_dir))
 
     # Setup CUDA, GPU & distributed training
     if args.local_rank == -1 or args.no_cuda:
@@ -474,7 +435,7 @@ def main():
     set_seed(args)
 
     # Prepare GLUE task
-    args.task_name = args.task_name.lower() # factcc_annotated for evaluation
+    args.task_name = args.task_name.lower()
     if args.task_name not in processors:
         raise ValueError("Task not found: %s" % (args.task_name))
     processor = processors[args.task_name]()
@@ -516,31 +477,31 @@ def main():
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         # Create output directory if needed
-        if not os.path.exists(args.checkpoint_dir) and args.local_rank in [-1, 0]:
-            os.makedirs(args.checkpoint_dir)
+        if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
+            os.makedirs(args.output_dir)
 
-        logger.info("Saving model checkpoint to %s", args.checkpoint_dir)
+        logger.info("Saving model checkpoint to %s", args.output_dir)
         # Save a trained model, configuration and tokenizer using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
         model_to_save = model.module if hasattr(model, 'module') else model  # Take care of distributed/parallel training
-        model_to_save.save_pretrained(args.checkpoint_dir)
-        tokenizer.save_pretrained(args.checkpoint_dir)
+        model_to_save.save_pretrained(args.output_dir)
+        tokenizer.save_pretrained(args.output_dir)
 
         # Good practice: save your training arguments together with the trained model
-        torch.save(args, os.path.join(args.checkpoint_dir, 'training_args.bin'))
+        torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
 
         # Load a trained model and vocabulary that you have fine-tuned
-        model = model_class.from_pretrained(args.checkpoint_dir)
-        tokenizer = tokenizer_class.from_pretrained(args.checkpoint_dir)
+        model = model_class.from_pretrained(args.output_dir)
+        tokenizer = tokenizer_class.from_pretrained(args.output_dir)
         model.to(args.device)
 
 
     # Evaluation
     results = {}
     if args.do_eval and args.local_rank in [-1, 0]:
-        checkpoints = [args.checkpoint_dir]
+        checkpoints = [args.output_dir]
         if args.eval_all_checkpoints:
-            checkpoints = list(os.path.dirname(c) for c in sorted(glob.glob(args.checkpoint_dir + '/**/' + WEIGHTS_NAME, recursive=True)))
+            checkpoints = list(os.path.dirname(c) for c in sorted(glob.glob(args.output_dir + '/**/' + WEIGHTS_NAME, recursive=True)))
             logging.getLogger("pytorch_transformers.modeling_utils").setLevel(logging.WARN)  # Reduce logging
         logger.info("Evaluate the following checkpoints: %s", checkpoints)
         for checkpoint in checkpoints:

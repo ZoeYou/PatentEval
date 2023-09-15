@@ -132,7 +132,6 @@ def apply_transformation(data, operation, do_parallel=False):
 def main(args):
     # load data
     source_docs = load_source_docs(args.data_file, to_dict=False)
-    source_docs = source_docs[:100000]
     print("Loaded %d source documents." % len(source_docs))
 
     # create or load positive examples
