@@ -7,12 +7,6 @@ import evaluate
 from openai.error import *
 
 openai.api_key = "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"
-    
-
-def reduceToMaxPT(text, maxpt=5000):
-    # for text longer than maxpt tokens, we need to reduce it to less than maxpt tokens, if not the chatgpt will be possible to refuse it
-    return ' '.join(text.split()[:maxpt])
-
 
 def generate_abstract(claims, numberTries=0, gptChoice=0, maxsize=4097, exponential_base: float = 2, jitter: bool = True, max_retries: int = 5):
     prompt = "Please draft a patent abstract from the provided claims. The abstract should concisely summarize the technical disclosure, enabling any reader to quickly understand the subject matter. You'll be given an example to guide your creation.\n" \
