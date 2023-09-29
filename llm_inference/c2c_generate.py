@@ -19,24 +19,52 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-def get_first_n_words(text, n):
+def get_first_sentences_within_n_words(text, n):
+    # tokenize claims into senteces 
+    re_claims = re.compile(r'(\d+\.\s[A-Z][^\.!?]*[\.!?])', re.M)
+    sentences = re_claims.findall(text)
+
+    # get first sentences until n words
+    first_sentences = ""
+    for sent in sentences:
+        if len(first_sentences.split(" ")) + len(sent.split(" ")) < n:
+            first_sentences = first_sentences + " " + sent
+        elif first_sentences == "":
+            return " ".join(sent.split(" ")[:n])
+        else:
+            return first_sentences
+
+
+def get_first_words(text, n):
     return " ".join(text.split(" ")[:n])
 
-def process_examples(examples, prompt, n=1536//2):
+
+def process_examples(examples, prompt, n=512):
     results = {
         "text": [],
     }
+    
     for i in range(len(examples["text"])):
-        text = " " + get_first_n_words(examples["text"][i], n)
-        if prompt:
+        try:
+            text = get_first_sentences_within_n_words(examples["text"][i], n)
             text = prompt.replace("{{ claims }}", text)
+        except TypeError:
+            text = get_first_words(examples["text"][i], n)
+            text = prompt.replace("{{ claims }}", text)
+
+        # # add numbering of the next claim
+        # pattern_claim = '\d+\. (?!\(canceled\))'
+        # numberings = re.findall(pattern_claim, text)
+        # last_numbering = int(numberings[-1].split(".")[0])
+        # next_numbering = last_numbering + 1
+        # text = text + f"\n{next_numbering}. "
 
         results["text"].append(" ".join(text.split(" ")))
     return results
-
-
+    
 
 def predict(args, df):
+
     input_claims = df['input_claims'].fillna('').to_list()
 
     # create our own dataset object
@@ -44,14 +72,16 @@ def predict(args, df):
 
     logger.info("Dataset loaded")
 
-    prompt = "Based on the provided patent claims below, please draft the subsequent claim for a continuation. This claim, which may be either dependent or independent, should be precise, legally sound, and in line with patent claim drafting conventions. Use the existing claims as a basis for your draft.\n" \
-        + "Claims: {claims}"
+    prompt = "Based on the provided patent claims below, please draft ONLY the subsequent claim for a continuation. This claim, which may be either dependent or independent, should be precise, legally sound, and in line with patent claim drafting conventions. Use the existing claims as a basis for your draft.\n" \
+        + "Claims: {{ claims }}\n" \
+        + "Next claim: "
 
     dataset = dataset.map(
         process_examples,
         batched=True,
         batch_size=10,
-        fn_kwargs={"prompt": prompt},
+        fn_kwargs={"prompt": prompt,
+                   "n": args.n_words},
     )
 
     logger.info("Dataset length: %d", len(dataset))
@@ -71,18 +101,15 @@ def predict(args, df):
                 do_sample=args.do_sample,
                 max_new_tokens=args.max_new_tokens,
                 repetition_penalty=args.repetition_penalty,
-                seed=args.seed,
                 return_full_text=False,
                 stop_sequences=None,
                 temperature=args.temperature,
                 top_k=args.top_k,
                 top_p=args.top_p,
                 truncate=None,
-                typical_p=args.typical_p,
-                watermark=args.watermark,
                 decoder_input_details=True,
             )
-            gen_outputs.append(_output)
+            gen_outputs.append(_output.dict())
     else:
         import asyncio
 
@@ -107,8 +134,6 @@ def predict(args, df):
                 top_k=args.top_k,
                 top_p=args.top_p,
                 truncate=None,
-                typical_p=args.typical_p,
-                watermark=args.watermark,
                 decoder_input_details=True,
             )
 
@@ -121,7 +146,6 @@ def predict(args, df):
 
             asyncio.run(main_async())
 
-    gen_outputs = [i.dict() for i in gen_outputs]
     if not gen_outputs:
         logger.info("No outputs generated")
         return
@@ -132,13 +156,24 @@ def predict(args, df):
         "Writing outputs to %s", path_output
     )
     os.makedirs(args.path_prediction, exist_ok=True)
-    df_res = pd.DataFrame({'output_claim': [i['text'] for i in gen_outputs]})
+
+    
+    predictions = [i['generated_text'].strip() for i in gen_outputs]
+    pattern_claim = '\d+\. (?!\(canceled\))'
+    for i, pred in enumerate(predictions):
+        numberings = re.findall(pattern_claim, pred)
+        claims_split = [c.strip() for c in re.split(pattern_claim, pred) if c]
+        if len(numberings)>1:
+            predictions[i] = numberings[0]+claims_split[0]
+
+    predictions = [re.sub(r'Next claim:', '', p) for p in predictions]
+    df_res = pd.DataFrame({'output_claim': predictions})
     df_res.to_csv(path_output, index=False)
     
 
 
 def main(args):
-    df = pd.read_csv(args.path_data)[:5]
+    df = pd.read_csv(args.path_data)
 
     # make prediction directory 
     path_prediction = args.path_prediction
@@ -149,21 +184,13 @@ def main(args):
     
     if os.path.exists(path_output) and os.path.getsize(path_output) > 0:
         df_res = pd.read_csv(path_output)
-        predictions = df_res['output_claim'].to_list()
+        predictions = df_res['output_claim'].apply(str).to_list()
     else:
         predict(args, df)
         df_res = pd.read_csv(path_output)
-        predictions = df_res['output_claim'].to_list()
+        predictions = df_res['output_claim'].apply(str).to_list()
 
-    pattern_claim = '\d+\. (?!\(canceled\))'
-    for i, pred in enumerate(predictions):
-        numberings = re.findall(pattern_claim, pred)
-        claims_split = [c.strip() for c in re.split(pattern_claim, pred) if c]
-        if len(numberings)>1:
-            predictions[i] = numberings[0]+claims_split[0]
 
-    df_res = pd.DataFrame({'output_claim': predictions})
-    df_res.to_csv(path_output, index=False)
 
 
 
@@ -181,12 +208,11 @@ if __name__ == '__main__':
     parser.add_argument("--do_sample", type=bool, default=True)
     parser.add_argument("--max_new_tokens", type=int, default=512)
     parser.add_argument("--repetition_penalty", type=float, default=1.0)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--temperature", type=float, default=0.001)
+    parser.add_argument("--temperature", type=float, default=0.01)
     parser.add_argument("--top_k", type=int, default=10)
     parser.add_argument("--top_p", type=float, default=0.9)
-    parser.add_argument("--typical_p", type=float, default=0.95)
-    parser.add_argument("--watermark", type=bool, default=False)
+
+    parser.add_argument('-n', '--n_words', type=int, default=512, help='number of input words')
 
     args = parser.parse_args()
 
