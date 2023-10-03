@@ -20,7 +20,7 @@ def generate_chat_completion(messages, n, model="gpt-4-0613"):
     }
 
     tries = 0
-    while tries < 5:
+    while tries < 2:
         try:
             _response = openai.ChatCompletion.create(
                 model=model,
@@ -43,11 +43,11 @@ def generate_chat_completion(messages, n, model="gpt-4-0613"):
         except Exception as e:
             print(e)
             if ("limit" in str(e)):
-                time.sleep(2)
+                time.sleep(60)
             else:
-                ignore += 1
-                print('ignored', ignore)
-
+                time.sleep(5)
+                print('ignored', messages)
+        tries += 1
     return
 
 
@@ -225,7 +225,7 @@ if __name__ == '__main__':
     method = args.path_prediction.split('/')[-1].split('.')[0]
     path_output = os.path.join(path_eval, f'{method}_{args.aspect}.eval')
     if args.path_data == "./data/eval_data.csv":
-        eval_df = pd.DataFrame({"orig_claims": claims, "orig_abstract": abstracts, "generated_abstract": predictions, "eval": evaluations, "label": scores})
+        eval_df = pd.DataFrame({"orig_claims": claims, "orig_abstract": abstracts, "generated_abstract": predictions, "eval": evaluations, "label": weighted_scores})
     elif args.path_data == "./data/eval_data_c2c.csv":
         eval_df = pd.DataFrame({"orig_claims": claims, "generated_claim": predictions, "eval": evaluations, "label": scores})
    
