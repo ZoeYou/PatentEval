@@ -46,23 +46,23 @@ def process_examples(examples, prompt, n=512):
         "text": [],
     }
 
-    for i in range(len(examples["text"])):
+    for i in range(len(examples["claims"])):
         try:
-            text = get_first_sentences_within_n_words(examples["text"][i], n)
+            text = get_first_sentences_within_n_words(examples["claims"][i], n)
             text = prompt.replace("{{ claims }}", text)
         except TypeError:
-            text = get_first_words(examples["text"][i], n)
+            text = get_first_words(examples["claims"][i], n)
             text = prompt.replace("{{ claims }}", text)
 
         results["text"].append(" ".join(text.split(" ")))
     return results
 
 
-def predict(args, df):
+def predict_process(args, df):
     actuals, inputs = df['abstract'].to_list(), df['claims'].to_list()
 
     # create our own dataset object
-    dataset = datasets.Dataset.from_dict({"text": inputs, "abstract": actuals, "id": list(range(len(inputs))), "split": ["test"] * len(inputs)})
+    dataset = datasets.Dataset.from_dict({"claims": inputs, "abstract": actuals, "id": list(range(len(inputs))), "split": ["test"] * len(inputs)})
 
     logger.info("Dataset loaded")
 
@@ -88,23 +88,38 @@ def predict(args, df):
 
         client = Client(f"http://{args.host}:{args.port}", timeout=300)
 
-        for example in tqdm(dataset):
-            logger.info("Generating for %s", example["text"])
-            _output = client.generate(
-                example["text"],
-                do_sample=args.do_sample,
-                max_new_tokens=args.max_new_tokens,
-                repetition_penalty=args.repetition_penalty,
-                return_full_text=False,
-                stop_sequences=None,
-                temperature=args.temperature,
-                top_k=args.top_k,
-                top_p=args.top_p,
-                truncate=None,
-                decoder_input_details=True,
-            )
-            logger.info("Generated: %s", _output.dict()["generated_text"])
-            gen_outputs.append(_output.dict())
+        for i, example in enumerate(tqdm(dataset)):
+            while True:
+                try:
+                    logger.info("Generating for %s", example["text"])
+                    _output = client.generate(
+                        example["text"],
+                        do_sample=args.do_sample,
+                        max_new_tokens=args.max_new_tokens,
+                        repetition_penalty=args.repetition_penalty,
+                        return_full_text=False,
+                        stop_sequences=None,
+                        temperature=args.temperature,
+                        top_k=args.top_k,
+                        top_p=args.top_p,
+                        truncate=None,
+                        decoder_input_details=True,
+                    )
+                    logger.info("Generated: %s", _output.dict()["generated_text"])
+
+                    # abstract should be one single sentence
+                    _output.dict()["generated_text"] = _output.dict()["generated_text"].split("\n")[0]
+
+                    if _output.dict()["generated_text"].count('*') > 15:
+                        example["text"] = process_examples({"claims": [dataset[i]["claims"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
+                        logger.info("Retrying...")
+                        continue
+                    else:
+                        gen_outputs.append(_output.dict())
+                        break
+                except:
+                    logger.info("Retrying...")
+                    example["text"] = process_examples({"claims": [dataset[i]["claims"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
 
     else:
         import asyncio
@@ -116,7 +131,7 @@ def predict(args, df):
         logger.info(
             "Generating samples in parallel since batch_size=%d", args.batch_size
         )
-
+        # TODO fix this for max_input_length > 1024
         async def generate_async(text):
             return await client.generate(
                 prompt=text,
@@ -129,7 +144,6 @@ def predict(args, df):
                 top_k=args.top_k,
                 top_p=args.top_p,
                 truncate=None,
-                watermark=args.watermark,
                 decoder_input_details=True,
             )
 
@@ -164,13 +178,12 @@ def main(args):
     if not os.path.isdir(path_prediction):
         os.makedirs(path_prediction)
     path_output = os.path.join(path_prediction, f'{args.model_name.split("/")[-1]}_abstract.pred')
-    if os.path.exists(path_output) and os.path.getsize(path_output) > 0:
-        df_res = pd.read_csv(path_output)
-        predictions = df_res['abstract'].to_list()
-    else:
-        predict(args, df)
-        df_res = pd.read_csv(path_output)
-        predictions = df_res['abstract'].to_list()
+
+    if not (os.path.exists(path_output) and os.path.getsize(path_output) > 0):
+        predict_process(args, df)
+
+    df_res = pd.read_csv(path_output)
+    predictions = df_res['abstract'].to_list()
 
     scores = []
     rouge = evaluate.load('rouge')

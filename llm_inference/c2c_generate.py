@@ -43,32 +43,25 @@ def process_examples(examples, prompt, n=512):
     results = {
         "text": [],
     }
-    
-    for i in range(len(examples["text"])):
+
+    for i in range(len(examples["claims"])):
         try:
-            text = get_first_sentences_within_n_words(examples["text"][i], n)
+            text = get_first_sentences_within_n_words(examples["claims"][i], n)
             text = prompt.replace("{{ claims }}", text)
         except TypeError:
-            text = get_first_words(examples["text"][i], n)
+            text = get_first_words(examples["claims"][i], n)
             text = prompt.replace("{{ claims }}", text)
-
-        # # add numbering of the next claim
-        # pattern_claim = '\d+\. (?!\(canceled\))'
-        # numberings = re.findall(pattern_claim, text)
-        # last_numbering = int(numberings[-1].split(".")[0])
-        # next_numbering = last_numbering + 1
-        # text = text + f"\n{next_numbering}. "
 
         results["text"].append(" ".join(text.split(" ")))
     return results
     
 
-def predict(args, df):
+def predict_process(args, df):
 
     input_claims = df['input_claims'].fillna('').to_list()
 
     # create our own dataset object
-    dataset = datasets.Dataset.from_dict({"text": input_claims, "id": list(range(len(input_claims))), "split": ["test"] * len(input_claims)})
+    dataset = datasets.Dataset.from_dict({"claims": input_claims, "id": list(range(len(input_claims))), "split": ["test"] * len(input_claims)})
 
     logger.info("Dataset loaded")
 
@@ -95,21 +88,36 @@ def predict(args, df):
 
         client = Client(f"http://{args.host}:{args.port}", timeout=300)
 
-        for example in tqdm(dataset):
-            _output = client.generate(
-                example["text"],
-                do_sample=args.do_sample,
-                max_new_tokens=args.max_new_tokens,
-                repetition_penalty=args.repetition_penalty,
-                return_full_text=False,
-                stop_sequences=None,
-                temperature=args.temperature,
-                top_k=args.top_k,
-                top_p=args.top_p,
-                truncate=None,
-                decoder_input_details=True,
-            )
-            gen_outputs.append(_output.dict())
+        for i, example in enumerate(tqdm(dataset)):
+            count = 0
+            while count < 10:        
+                try:
+                    logger.info("Generating for %s", example["text"])
+                    _output = client.generate(
+                        example["text"],
+                        do_sample=args.do_sample,
+                        max_new_tokens=args.max_new_tokens,
+                        repetition_penalty=args.repetition_penalty,
+                        return_full_text=False,
+                        stop_sequences=None,
+                        temperature=args.temperature,
+                        top_k=args.top_k,
+                        top_p=args.top_p,
+                        truncate=None,
+                        decoder_input_details=True,
+                    )
+                    count += 1
+                    logger.info("Generated: %s", _output.dict()["generated_text"])
+                    if (_output.dict()["generated_text"].count('*') > 15 or len(_output.dict()["generated_text"]) < 30):
+                        example["text"] = process_examples({"claims": [dataset[i]["claims"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
+                        logger.info("Retrying...")
+                        continue
+                    gen_outputs.append(_output.dict())
+                    break
+                except:
+                    logger.info("Retrying...")
+                    example["text"] = process_examples({"claims": [dataset[i]["claims"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
+
     else:
         import asyncio
 
@@ -156,7 +164,6 @@ def predict(args, df):
         "Writing outputs to %s", path_output
     )
     os.makedirs(args.path_prediction, exist_ok=True)
-
     
     predictions = [i['generated_text'].strip() for i in gen_outputs]
     pattern_claim = '\d+\. (?!\(canceled\))'
@@ -181,14 +188,9 @@ def main(args):
         os.makedirs(path_prediction)
     path_output = os.path.join(path_prediction, '{}_claim.pred'.format(args.model_name.split("/")[-1]))
 
-    
-    if os.path.exists(path_output) and os.path.getsize(path_output) > 0:
-        df_res = pd.read_csv(path_output)
-        predictions = df_res['output_claim'].apply(str).to_list()
-    else:
-        predict(args, df)
-        df_res = pd.read_csv(path_output)
-        predictions = df_res['output_claim'].apply(str).to_list()
+    if not (os.path.exists(path_output) and os.path.getsize(path_output) > 0):
+        predict_process(args, df)
+       
 
 
 
