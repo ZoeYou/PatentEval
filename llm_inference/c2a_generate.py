@@ -107,14 +107,15 @@ def predict_process(args, df):
                     )
                     logger.info("Generated: %s", _output.dict()["generated_text"])
 
-                    # abstract should be one single sentence
-                    _output.dict()["generated_text"] = _output.dict()["generated_text"].split("\n")[0]
+                    
 
                     if _output.dict()["generated_text"].count('*') > 15:
                         example["text"] = process_examples({"claims": [dataset[i]["claims"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
                         logger.info("Retrying...")
                         continue
                     else:
+                        # abstract should be one single sentence
+                        _output.dict()["generated_text"] = _output.dict()["generated_text"].split("\n")[0]
                         gen_outputs.append(_output.dict())
                         break
                 except:
@@ -170,6 +171,16 @@ def predict_process(args, df):
     df_res.to_csv(path_output, index=False)
 
 
+def post_process(predictions):
+    # if multiple sentences, take the first one
+    predictions = [p.split("\n")[0].strip() for p in predictions]
+    
+    # check if any sentence is empty
+    assert all([p != "" for p in predictions]), "Empty predictions found"
+
+    return predictions
+
+
 def main(args):
     df = pd.read_csv(args.path_data)
     actuals = df['abstract'].to_list()
@@ -184,7 +195,12 @@ def main(args):
 
     df_res = pd.read_csv(path_output)
     predictions = df_res['abstract'].to_list()
+    predictions = post_process(predictions)
+    # resave to file
+    df_res = pd.DataFrame({'abstract': predictions})
+    df_res.to_csv(path_output, index=False)
 
+    # compute rouge score
     scores = []
     rouge = evaluate.load('rouge')
     scores.append(rouge.compute(predictions=predictions, references=[[act] for act in actuals])['rougeL'])
