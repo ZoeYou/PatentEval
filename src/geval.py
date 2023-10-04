@@ -14,18 +14,13 @@ API_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 openai.api_key = API_KEY
 
 def generate_chat_completion(messages, n, model="gpt-4-0613"):
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {API_KEY}",
-    }
-
     tries = 0
     while tries < 2:
         try:
             _response = openai.ChatCompletion.create(
                 model=model,
                 messages=messages,
-                temperature=1,
+                temperature=0.0,
                 max_tokens=None,
                 top_p=1,
                 frequency_penalty=0,
@@ -45,7 +40,7 @@ def generate_chat_completion(messages, n, model="gpt-4-0613"):
             if ("limit" in str(e)):
                 time.sleep(60)
             else:
-                time.sleep(5)
+                time.sleep(30)
                 print('ignored', messages)
         tries += 1
     return
@@ -172,7 +167,7 @@ parser.add_argument('--path_data', type=str, default="./data/eval_data.csv")
 parser.add_argument('--path_prediction', required=True, type=str)
 parser.add_argument('--aspect', type=str, required=False, choices={"factuality", "relevance", "coherence"})
 parser.add_argument('--path_evalution', type=str, default="./evaluations")
-parser.add_argument('--n', type=int, default=20)
+parser.add_argument('--n', type=int, default=1)
 
 args = parser.parse_args()
 
@@ -217,6 +212,9 @@ if __name__ == '__main__':
 
     print(args.path_prediction, args.aspect, sum(weighted_scores)/len(weighted_scores))
     print(args.aspect + " : ", sum(weighted_scores)/len(weighted_scores))
+
+    if args.n == 1: 
+        evaluations = [eval[0] for eval in evaluations]
 
     # make output evaluation directory 
     path_eval = args.path_evalution
