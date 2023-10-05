@@ -13,7 +13,7 @@ for _, row in df.iterrows():
     claims = row['claims']
 
     numberings = re.findall(pattern_claim, claims)
-    claims_split = [c.strip() for c in re.split(pattern_claim, claims) if c]
+    claims_split = [c.strip("\n") for c in re.split(pattern_claim, claims) if c]
 
     index = random.choice([1,2,3])
     numberings = numberings[:index]

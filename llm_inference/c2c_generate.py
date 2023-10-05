@@ -180,17 +180,12 @@ def predict_process(args, df):
 
 def post_process(predictions):
 
-    print("before post process: ", predictions[:20])
-
     # if starts with digits
     for i, p in enumerate(predictions):
         if re.match(r'^\d+\.', p):
             # if multiple sentences, take the first one that ends with ".\n", else keep the same
             if "\n" in p:
                 predictions[i] = p.split(".\n")[0].strip() + "."
-
-    print("after post process: ", predictions[:20])
-    asdf
     
     # check if any sentence is empty
     assert all([p != "" for p in predictions]), "Empty predictions found"
@@ -211,7 +206,7 @@ def main(args):
     
     # resave to file
     df_res = pd.read_csv(path_output)
-    predictions = df_res['output_claim'].to_list()
+    predictions = df_res['output_claim'].apply(str).to_list()
     predictions = post_process(predictions)
     df_res = pd.DataFrame({'output_claim': predictions})
     df_res.to_csv(path_output, index=False)
