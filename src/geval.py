@@ -8,12 +8,12 @@ import json, os, requests, re
 from tqdm import tqdm
 import time
 
-API_KEY = "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"
+API_KEY = "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"
 API_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 
 openai.api_key = API_KEY
 
-def generate_chat_completion(messages, n, model="gpt-4-0613"):
+def generate_chat_completion(messages, n, model="gpt-3.5-turbo-16k-0613"):
     tries = 0
     while tries < 2:
         try:
@@ -47,7 +47,6 @@ def generate_chat_completion(messages, n, model="gpt-4-0613"):
 
 
 
-
 def eval_relevance(claims, abstract, n):
     messages = [
         {"role": "system", "content": "You are a professional patent practitioner tasked with evaluating an AI system that generates patent abstracts based on patent claims."},
@@ -60,7 +59,7 @@ def eval_relevance(claims, abstract, n):
 
     response_text = generate_chat_completion(messages, n)
 
-    cnt, nb_words = 0, 3000
+    cnt, nb_words = 0, 8000
     while (not response_text) and cnt <= 5:
         claims = ' '.join(claims.split(' ')[:nb_words])
         messages = [
@@ -92,7 +91,7 @@ def eval_fact(claims, abstract, n):
 
     response_text = generate_chat_completion(messages, n)
 
-    cnt, nb_words = 0, 3000
+    cnt, nb_words = 0, 8000
     while (not response_text) and cnt <= 5:
         claims = ' '.join(claims.split(' ')[:nb_words])
         messages = [
@@ -125,7 +124,7 @@ def eval_coherence(claims, generated_claim, n):
 
     response_text = generate_chat_completion(messages, n)
 
-    cnt, nb_words = 0, 3000
+    cnt, nb_words = 0, 8000
     while (not response_text) and cnt <= 5:
         claims = ' '.join(claims.split(' ')[:nb_words])
         messages = [
@@ -151,7 +150,8 @@ def calculate_weighted_score(evaluations):
         try:
             scores.append(re.search('[12345]\.?\d?', eval).group())
         except AttributeError:
-            scores.append(score)
+            print("error:", eval)
+            scores.append("3")
 
     # calculate weighted score, (weights are defined by the frequency of each score)
     weighted_score = 0
@@ -174,13 +174,12 @@ args = parser.parse_args()
 if __name__ == '__main__':
     df = pd.read_csv(args.path_data)
 
-    if args.path_data == "./data/eval_data.csv":
+    if "eval_data.csv" in args.path_data:
         abstracts, claims = df['abstract'].to_list(), df['claims'].to_list()
         predictions = pd.read_csv(args.path_prediction)['abstract'].fillna('').to_list()
-    elif args.path_data == "./data/eval_data_c2c.csv":
+    elif "eval_data_c2c.csv" in args.path_data:
         claims = df['input_claims'].to_list()
         predictions = pd.read_csv(args.path_prediction)['output_claim'].fillna('').to_list()
-        
 
     evaluations, scores, weighted_scores = [], [], []
     if args.aspect == 'factuality':
@@ -213,8 +212,7 @@ if __name__ == '__main__':
     print(args.path_prediction, args.aspect, sum(weighted_scores)/len(weighted_scores))
     print(args.aspect + " : ", sum(weighted_scores)/len(weighted_scores))
 
-    if args.n == 1: 
-        evaluations = [eval[0] for eval in evaluations]
+    if args.n == 1: evaluations = [eval[0] for eval in evaluations]
 
     # make output evaluation directory 
     path_eval = args.path_evalution
@@ -222,9 +220,9 @@ if __name__ == '__main__':
         os.makedirs(path_eval)
     method = args.path_prediction.split('/')[-1].split('.')[0]
     path_output = os.path.join(path_eval, f'{method}_{args.aspect}.eval')
-    if args.path_data == "./data/eval_data.csv":
+    if "eval_data.csv" in args.path_data:
         eval_df = pd.DataFrame({"orig_claims": claims, "orig_abstract": abstracts, "generated_abstract": predictions, "eval": evaluations, "label": weighted_scores})
-    elif args.path_data == "./data/eval_data_c2c.csv":
-        eval_df = pd.DataFrame({"orig_claims": claims, "generated_claim": predictions, "eval": evaluations, "label": scores})
+    elif "eval_data_c2c.csv" in args.path_data:
+        eval_df = pd.DataFrame({"orig_claims": claims, "generated_claim": predictions, "eval": evaluations, "label": weighted_scores})
    
     eval_df.to_csv(path_output, index=False)
