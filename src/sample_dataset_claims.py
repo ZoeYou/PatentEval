@@ -50,7 +50,7 @@ for _, row in tqdm(df.iterrows()):
 
     if len(numbering) == 1:
         real_next_claim = "[end]"
-        dependency = False
+        dependency = True
     else:
         real_next_claim = (numberings[index] + claims_split[index]).strip(" .") + "."
         dependency = re.search(r"\d+[\.:)] (The|An?) .+ of claim \d+|\s+one of the aforementioned claims[ ,]+|\s+one of claims \d+ to \d+[ ,]+|\s+according (to )?claim \d+(?: or claim \d+)*[ ,.;]+|\d+[\.:)] (The |An? )?.+ (as )?(recited |claimed |set forth |defined |)in claim \d+", real_next_claim)
