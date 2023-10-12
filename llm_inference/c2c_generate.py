@@ -45,6 +45,12 @@ def process_examples(examples, prompt, n=512):
     }
 
     for i in range(len(examples["claims"])):
+        dependency = examples["dependencies"][i]
+        if dependency:
+            prompt = prompt.replace("{{ instruction }}", "Please assist me in drafting the next DEPENDENT claim based on the provided patent claims below. This claim should be written in a dependent format, precisely specifying its dependency on one or more preceding claims. It should be legally sound, in line with patent claim drafting conventions, and use the existing claims as a basis for your draft. Ensure that the claim you draft is clearly and explicitly dependent on a previous claim.")
+        else:
+            prompt = prompt.replace("{{ instruction }}", "Please assist me in drafting the next INDEPENDENT claim based on the provided patent claims below. This independent claim should be precise, legally sound, and in line with patent claim drafting conventions, using the existing claims as a basis for your draft. Ensure that the independent claim you draft does not refer to or depend on any preceding claims and is completely self-standing.")
+
         try:
             text = get_first_sentences_within_n_words(examples["claims"][i], n)
             text = prompt.replace("{{ claims }}", text)
@@ -59,13 +65,14 @@ def process_examples(examples, prompt, n=512):
 def predict_process(args, df):
 
     input_claims = df['input_claims'].fillna('').to_list()
+    dependencies = df['is_dependent'].fillna(True).to_list()
 
     # create our own dataset object
-    dataset = datasets.Dataset.from_dict({"claims": input_claims, "id": list(range(len(input_claims))), "split": ["test"] * len(input_claims)})
+    dataset = datasets.Dataset.from_dict({"claims": input_claims, "id": list(range(len(input_claims))), "dependencies": dependencies, "split": ["test"] * len(input_claims)})
 
     logger.info("Dataset loaded")
 
-    prompt = "Based on the provided patent claims below, please draft ONLY the subsequent claim for a continuation. This claim, which may be either dependent or independent, should be precise, legally sound, and in line with patent claim drafting conventions. Use the existing claims as a basis for your draft.\n" \
+    prompt = "{{ instruction }}\n" \
         + "Claims: {{ claims }}\n" \
         + "Next claim: "
 
@@ -109,14 +116,14 @@ def predict_process(args, df):
                     count += 1
                     logger.info("Generated: %s", _output.dict()["generated_text"])
                     if (_output.dict()["generated_text"].count('*') > 15 or len(_output.dict()["generated_text"]) < 30):
-                        example["text"] = process_examples({"claims": [dataset[i]["claims"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
+                        example["text"] = process_examples({"claims": [dataset[i]["claims"]], "dependencies": [dataset[i]["dependencies"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
                         logger.info("Retrying...")
                         continue
                     gen_outputs.append(_output.dict())
                     break
                 except:
                     logger.info("Retrying...")
-                    example["text"] = process_examples({"claims": [dataset[i]["claims"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
+                    example["text"] = process_examples({"claims": [dataset[i]["claims"]], "dependencies": [dataset[i]["dependencies"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
 
     else:
         import asyncio
@@ -184,8 +191,12 @@ def post_process(predictions):
     for i, p in enumerate(predictions):
         if re.match(r'^\d+\.', p):
             # if multiple sentences, take the first one that ends with ".\n", else keep the same
-            if "\n" in p:
+            if ".\n" in p:
                 predictions[i] = p.split(".\n")[0].strip() + "."
+        
+        # remove the prompt text if it repeats
+        if "Please assist me in drafting the next" in p:
+            predictions[i] = p.split("Please assist me in drafting the next")[0].strip()
     
     # check if any sentence is empty
     assert all([p != "" for p in predictions]), "Empty predictions found"

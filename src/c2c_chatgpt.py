@@ -8,9 +8,13 @@ from openai.error import *
 
 openai.api_key = "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"
 
-def generate_claim(claims, numberTries=0, gptChoice=0, maxsize=4097, exponential_base: float = 2, jitter: bool = True, max_retries: int = 5):
-    prompt = "Based on the provided patent claims below, please draft the subsequent claim for a continuation. This claim, which may be either dependent or independent, should be precise, legally sound, and in line with patent claim drafting conventions. Use the existing claims as a basis for your draft.\n" \
-        + "Claims: {claims}"
+def generate_claim(claims, is_dependent, numberTries=0, gptChoice=0, maxsize=4097, exponential_base: float = 2, jitter: bool = True, max_retries: int = 5):
+    if is_dependent:
+        prompt = "Please assist me in drafting the next dependent claim based on the provided patent claims below. This dependent claim should be precise, legally sound, and in line with patent claim drafting conventions, using the existing claims as a basis for your draft.\n" \
+            + "Claims: {claims}"
+    else:
+        prompt = "Please assist me in drafting the next independent claim based on the provided patent claims below. This independent claim should be precise, legally sound, and in line with patent claim drafting conventions, using the existing claims as a basis for your draft.\n" \
+            + "Claims: {claims}"      
 
     if numberTries >= max_retries:
         print("Error: Retrying too many times! Please check the format of the input text!")
@@ -35,9 +39,9 @@ def generate_claim(claims, numberTries=0, gptChoice=0, maxsize=4097, exponential
         if isinstance(e, RateLimitError):
             delay = exponential_base * (1 + jitter * random.random())
             time.sleep(delay)
-            return generate_claim(claims, gptChoice=gptChoice, numberTries=numberTries+1, maxsize=maxsize)
+            return generate_claim(claims, is_dependent, gptChoice=gptChoice, numberTries=numberTries+1, maxsize=maxsize)
         else:
-            return generate_claim(claims, gptChoice=gptChoice+1, numberTries=numberTries+1, maxsize=maxsize)
+            return generate_claim(claims, is_dependent, gptChoice=gptChoice+1, numberTries=numberTries+1, maxsize=maxsize)
 
 
 
@@ -50,6 +54,7 @@ args = parser.parse_args()
 if __name__ == '__main__':
     df = pd.read_csv(args.path_data)
     input_claims = df['input_claims'].fillna('').to_list()
+    dependencies = df['is_dependent'].fillna(True).to_list()
 
     # make prediction directory 
     path_prediction = args.path_prediction
@@ -58,12 +63,12 @@ if __name__ == '__main__':
     path_output = os.path.join(path_prediction, 'chatgpt_claim.pred')
 
     predictions = []
-    for c in tqdm(input_claims):
+    for c, d in tqdm(zip(input_claims, dependencies)):
         if len(c) < 10: 
             predictions.append("")  # given empty claim
             continue
         
-        pred = generate_claim(c)
+        pred = generate_claim(c, d)
         predictions.append(pred)
 
     pattern_claim = '\d+\. (?!\(canceled\))'
