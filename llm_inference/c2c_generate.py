@@ -20,15 +20,18 @@ logger.setLevel(logging.DEBUG)
 
 
 def get_first_sentences_within_n_words(text, n):
+    if len(text.split(" ")) < n:    return text
+    
     # tokenize claims into senteces 
     re_claims = re.compile(r'(\d+\.\s[A-Z][^\.!?]*[\.!?])', re.M)
-    sentences = re_claims.findall(text)
+    sentences = re_claims.findall(text)  
 
     # get first sentences until n words
     first_sentences = ""
     for sent in sentences:
         if len(first_sentences.split(" ")) + len(sent.split(" ")) < n:
             first_sentences = first_sentences + " " + sent
+            continue
         elif first_sentences == "":
             return " ".join(sent.split(" ")[:n])
         else:
@@ -39,24 +42,29 @@ def get_first_words(text, n):
     return " ".join(text.split(" ")[:n])
 
 
-def process_examples(examples, prompt, n=512):
+def process_examples(examples, dependencies, n=512):
     results = {
         "text": [],
     }
 
+    prompt_orig = "{{ instruction }}\n" \
+        + "Claims: {{ claims }}\n" \
+        + "Next claim: "
+
     for i in range(len(examples["claims"])):
-        dependency = examples["dependencies"][i]
-        if dependency:
-            prompt = prompt.replace("{{ instruction }}", "Please assist me in drafting the next DEPENDENT claim based on the provided patent claims below. This claim should be written in a dependent format, precisely specifying its dependency on one or more preceding claims. It should be legally sound, in line with patent claim drafting conventions, and use the existing claims as a basis for your draft. Ensure that the claim you draft is clearly and explicitly dependent on a previous claim.")
+        is_dependent = dependencies[i]
+        if is_dependent == True:
+            prompt0 = prompt_orig.replace("{{ instruction }}", "Please assist me in drafting the next DEPENDENT claim based on the provided patent claims below. This claim should be written in a dependent format, precisely specifying its dependency on one or more preceding claims. It should be legally sound, in line with patent claim drafting conventions, and use the existing claims as a basis for your draft. Ensure that the claim you draft is clearly and explicitly dependent on a previous claim.")
         else:
-            prompt = prompt.replace("{{ instruction }}", "Please assist me in drafting the next INDEPENDENT claim based on the provided patent claims below. This independent claim should be precise, legally sound, and in line with patent claim drafting conventions, using the existing claims as a basis for your draft. Ensure that the independent claim you draft does not refer to or depend on any preceding claims and is completely self-standing.")
+            prompt0 = prompt_orig.replace("{{ instruction }}", "Please assist me in drafting the next INDEPENDENT claim based on the provided patent claims below. This independent claim should be precise, legally sound, and in line with patent claim drafting conventions, using the existing claims as a basis for your draft. Ensure that the independent claim you draft does not refer to or depend on any preceding claims and is completely self-standing.")
 
         try:
             text = get_first_sentences_within_n_words(examples["claims"][i], n)
-            text = prompt.replace("{{ claims }}", text)
+            text = prompt0.replace("{{ claims }}", text)
         except TypeError:
             text = get_first_words(examples["claims"][i], n)
-            text = prompt.replace("{{ claims }}", text)
+            assert text != "", "Empty text"
+            text = prompt0.replace("{{ claims }}", text)
 
         results["text"].append(" ".join(text.split(" ")))
     return results
@@ -65,22 +73,18 @@ def process_examples(examples, prompt, n=512):
 def predict_process(args, df):
 
     input_claims = df['input_claims'].fillna('').to_list()
-    dependencies = df['is_dependent'].fillna(True).to_list()
+    dependencies = df['is_dependent'].to_list()
 
     # create our own dataset object
-    dataset = datasets.Dataset.from_dict({"claims": input_claims, "id": list(range(len(input_claims))), "dependencies": dependencies, "split": ["test"] * len(input_claims)})
+    dataset = datasets.Dataset.from_dict({"claims": input_claims, "id": list(range(len(input_claims))), "split": ["test"] * len(input_claims)})
 
     logger.info("Dataset loaded")
-
-    prompt = "{{ instruction }}\n" \
-        + "Claims: {{ claims }}\n" \
-        + "Next claim: "
 
     dataset = dataset.map(
         process_examples,
         batched=True,
         batch_size=10,
-        fn_kwargs={"prompt": prompt,
+        fn_kwargs={"dependencies": dependencies,
                    "n": args.n_words},
     )
 
@@ -116,14 +120,14 @@ def predict_process(args, df):
                     count += 1
                     logger.info("Generated: %s", _output.dict()["generated_text"])
                     if (_output.dict()["generated_text"].count('*') > 15 or len(_output.dict()["generated_text"]) < 30):
-                        example["text"] = process_examples({"claims": [dataset[i]["claims"]], "dependencies": [dataset[i]["dependencies"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
                         logger.info("Retrying...")
+                        example["text"] = process_examples({"claims": [dataset[i]["claims"]]}, dependencies=[dependencies[i]], n=len(example["text"].split(" "))//2)["text"][0]
                         continue
                     gen_outputs.append(_output.dict())
                     break
                 except:
                     logger.info("Retrying...")
-                    example["text"] = process_examples({"claims": [dataset[i]["claims"]], "dependencies": [dataset[i]["dependencies"]]}, prompt, n=len(example["text"].split(" "))//2)["text"][0]
+                    example["text"] = process_examples({"claims": [dataset[i]["claims"]]}, dependencies=[dependencies[i]], n=len(example["text"].split(" "))//2)["text"][0]
 
     else:
         import asyncio
@@ -186,7 +190,6 @@ def predict_process(args, df):
     
 
 def post_process(predictions):
-
     # if starts with digits
     for i, p in enumerate(predictions):
         if re.match(r'^\d+\.', p):
@@ -205,6 +208,8 @@ def post_process(predictions):
 
 def main(args):
     df = pd.read_csv(args.path_data)
+
+    assert all([i in [True, False] for i in df['is_dependent'].to_list()]), "is_dependent column should only have True or False values"
 
     # make prediction directory 
     path_prediction = args.path_prediction

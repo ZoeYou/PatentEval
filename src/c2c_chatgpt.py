@@ -10,10 +10,10 @@ openai.api_key = "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"
 
 def generate_claim(claims, is_dependent, numberTries=0, gptChoice=0, maxsize=4097, exponential_base: float = 2, jitter: bool = True, max_retries: int = 5):
     if is_dependent:
-        prompt = "Please assist me in drafting the next dependent claim based on the provided patent claims below. This dependent claim should be precise, legally sound, and in line with patent claim drafting conventions, using the existing claims as a basis for your draft.\n" \
+        prompt = "Please assist me in drafting the next DEPENDENT claim based on the provided patent claims below. This claim should be written in a dependent format, precisely specifying its dependency on one or more preceding claims. It should be legally sound, in line with patent claim drafting conventions, and use the existing claims as a basis for your draft. Ensure that the claim you draft is clearly and explicitly dependent on a previous claim.\n" \
             + "Claims: {claims}"
     else:
-        prompt = "Please assist me in drafting the next independent claim based on the provided patent claims below. This independent claim should be precise, legally sound, and in line with patent claim drafting conventions, using the existing claims as a basis for your draft.\n" \
+        prompt = "Please assist me in drafting the next INDEPENDENT claim based on the provided patent claims below. This independent claim should be precise, legally sound, and in line with patent claim drafting conventions, using the existing claims as a basis for your draft. Ensure that the independent claim you draft does not refer to or depend on any preceding claims and is completely self-standing.\n" \
             + "Claims: {claims}"      
 
     if numberTries >= max_retries:
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     path_output = os.path.join(path_prediction, 'chatgpt_claim.pred')
 
     predictions = []
-    for c, d in tqdm(zip(input_claims, dependencies)):
+    for c, d in tqdm(zip(input_claims, dependencies), total=len(input_claims)):
         if len(c) < 10: 
             predictions.append("")  # given empty claim
             continue

@@ -18,13 +18,12 @@ for _, row in tqdm(df.iterrows()):
 
     numberings = re.findall(pattern_numbering, claims)
     claims_split = [c.strip("\n.") for c in re.split(pattern_numbering, claims) if c]
+    assert len(numberings) == len(claims_split), f"numberings: {numberings} and claims_split: {claims_split} have different lengths"
 
     if len(numberings) == 1:
-        index = 0
-        assert type(numberings[index]) == str, f"numberings: {numberings} is not a string"
-        previous_numberings = [numberings[index]]
-        previous_claims_split = [claims_split[index]]
-
+        index = 1
+        previous_numberings = numberings[:index]
+        previous_claims_split = claims_split[:index]
     else:
         if len(numberings) > 3:
             index = random.choice([1,2,3])
@@ -48,7 +47,7 @@ for _, row in tqdm(df.iterrows()):
     elif re.search(r"\. \d+\) ", input):
         input = re.sub(r"\. (\d+)\) ", r".\n\1) ", input)
 
-    if len(numbering) == 1:
+    if len(numberings) == 1:
         real_next_claim = "[end]"
         dependency = True
     else:
