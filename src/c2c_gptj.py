@@ -65,7 +65,7 @@ if __name__ == '__main__':
       
       # Decode the generated output
       generated_text = tokenizer.decode(output[0], skip_special_tokens=False)
-      generated_text = generated_text.replace(input, '').split('<|end_of_claim|>')[0]
+      generated_text = generated_text.replace(input, '').split('<|end_of_claim|>')[0].split('<|dep|>')[0].strip()
       return generated_text
 
   predictions = []

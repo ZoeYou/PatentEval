@@ -13,7 +13,7 @@ def generate_claim(claims, is_dependent, numberTries=0, gptChoice=0, maxsize=409
         prompt = "Please assist me in drafting the next DEPENDENT claim based on the provided patent claims below. This claim should be written in a dependent format, precisely specifying its dependency on one or more preceding claims. It should be legally sound, in line with patent claim drafting conventions, and use the existing claims as a basis for your draft. Ensure that the claim you draft is clearly and explicitly dependent on a previous claim.\n" \
             + "Claims: {claims}"
     else:
-        prompt = "Please assist me in drafting the next INDEPENDENT claim based on the provided patent claims below. This independent claim should be precise, legally sound, and in line with patent claim drafting conventions, using the existing claims as a basis for your draft. Ensure that the independent claim you draft does not refer to or depend on any preceding claims and is completely self-standing.\n" \
+        prompt = "Please assist me in drafting the next INDEPENDENT claim in the series, directly following the provided patent claims below. This independent claim should be precise, legally sound, and in line with patent claim drafting conventions. Please continue the numbering scheme from the previous claims and ensure that this claim builds upon the previous claims logically.\n" \
             + "Claims: {claims}"      
 
     if numberTries >= max_retries:
