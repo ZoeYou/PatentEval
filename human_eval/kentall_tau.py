@@ -133,6 +133,11 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
         nlp = spacy.load("en_core_web_sm")
         nlp.add_pipe("combo_basic")
 
+        # keep only first claim for each input_claims
+        input_claims = [c.split("2.")[0].strip() for c in input_claims]
+        print(inpiut_claims)
+        asdf
+
         for claim, abstract1, abstract2 in zip(input_claims, output1_data, output2_data):
             terms_claim = nlp(claim)._.combo_basic.sort_values(ascending=False)
             terms_abstract1 = nlp(abstract1)._.combo_basic.sort_values(ascending=False)
