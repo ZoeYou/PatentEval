@@ -129,7 +129,7 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
         # # keep only first claim for each input_claims
         # input_claims = [c.split("2.")[0].strip() for c in input_claims]
 
-        for claim, abstract1, abstract2 in zip(input_claims, output1_data, output2_data):
+        for claim, abstract1, abstract2 in tqdm(zip(input_claims, output1_data, output2_data), total=len(input_claims)):
             terms_claim = nlp(claim)._.combo_basic.sort_values(ascending=False)
             terms_abstract1 = nlp(abstract1)._.combo_basic.sort_values(ascending=False)
             terms_abstract2 = nlp(abstract2)._.combo_basic.sort_values(ascending=False)
@@ -140,12 +140,44 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
             terms_abstract2 = [k for k, v in terms_abstract2.to_dict().items() if v > 1.0]
 
             # get the number of overlapping terms between claim and abstract
-            # overlap1_p = len(set(terms_claim).intersection(set(terms_abstract1))) / len(set(terms_claim))
-            # overlap2_p = len(set(terms_claim).intersection(set(terms_abstract2))) / len(set(terms_claim))
+            try:
+                overlap1_r = len(set(terms_claim).intersection(set(terms_abstract1))) / len(set(terms_claim))
+            except ZeroDivisionError:
+                overlap1_r = 0
 
-            overlap1 = len(set(terms_claim).intersection(set(terms_abstract1))) / len(set(terms_abstract1))
-            overlap2 = len(set(terms_claim).intersection(set(terms_abstract2))) / len(set(terms_abstract2))
+            try:
+                overlap2_r = len(set(terms_claim).intersection(set(terms_abstract2))) / len(set(terms_claim))
+            except ZeroDivisionError:
+                overlap2_r = 0
 
+            try:
+                overlap1_p = len(set(terms_claim).intersection(set(terms_abstract1))) / len(set(terms_abstract1))
+            except ZeroDivisionError:
+                overlap1_p = 0
+            try:
+                overlap2_p = len(set(terms_claim).intersection(set(terms_abstract2))) / len(set(terms_abstract2))
+            except ZeroDivisionError:
+                overlap2_p = 0
+
+            try:
+                overlap1 = 2 / (1/overlap1_p + 1/overlap1_r)
+            except ZeroDivisionError:
+                if overlap1_p == 0 and overlap1_r == 0:
+                    overlap1 = 0
+                elif overlap1_p == 0:
+                    overlap1 = 2 / (1/0.0001 + 1/overlap1_r)
+                elif overlap1_r == 0:
+                    overlap1 = 2 / (1/overlap1_p + 1/0.0001)
+
+            try:
+                overlap2 = 2 / (1/overlap2_p + 1/overlap2_r)
+            except ZeroDivisionError:
+                if overlap2_p == 0 and overlap2_r == 0:
+                    overlap2 = 0
+                elif overlap2_p == 0:
+                    overlap2 = 2 / (1/0.0001 + 1/overlap2_r)
+                elif overlap2_r == 0:
+                    overlap2 = 2 / (1/overlap2_p + 1/0.0001)
 
             if overlap1 > overlap2:
                 rankings.append([1, 2])
@@ -164,11 +196,11 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
             abstract2_ngrams = get_ngrams(abstract2)
 
             # get the number of overlapping terms between claim and abstract
-            overlap1_p = len(set(claim_ngrams).intersection(set(abstract1_ngrams))) / len(set(claim_ngrams))
-            overlap2_p = len(set(claim_ngrams).intersection(set(abstract2_ngrams))) / len(set(claim_ngrams))
+            overlap1_r = len(set(claim_ngrams).intersection(set(abstract1_ngrams))) / len(set(claim_ngrams))
+            overlap2_r = len(set(claim_ngrams).intersection(set(abstract2_ngrams))) / len(set(claim_ngrams))
 
-            overlap1_r = len(set(claim_ngrams).intersection(set(abstract1_ngrams))) / len(set(abstract1_ngrams))
-            overlap2_r = len(set(claim_ngrams).intersection(set(abstract2_ngrams))) / len(set(abstract2_ngrams))
+            overlap1_p = len(set(claim_ngrams).intersection(set(abstract1_ngrams))) / len(set(abstract1_ngrams))
+            overlap2_p = len(set(claim_ngrams).intersection(set(abstract2_ngrams))) / len(set(abstract2_ngrams))
 
             try:
                 overlap1 = 2 / (1/overlap1_p + 1/overlap1_r)
