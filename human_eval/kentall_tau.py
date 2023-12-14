@@ -3,24 +3,20 @@ import argparse
 import json
 import pandas as pd
 
-import torch
-import torch.nn as nn
-
 import csv
 csv.field_size_limit(100000000)
 
 from tqdm import tqdm
+from nltk.corpus import stopwords
+import string
 
-from collections import defaultdict
-
-from sklearn.preprocessing import MultiLabelBinarizer
 
 
 def get_rank(annotation_list):
     res = []
     for line in annotation_list:
         if line["type"] == "pairwise":
-            if line["value"]["selected"] == "left": 
+            if line["value"]["selected"] == "left":
                 res.append(1)
                 res.append(2)
             elif line["value"]["selected"] == "right": 
@@ -78,54 +74,51 @@ def get_ground_truths(ground_truths_file, task_name):
     return orig_data
 
 
+def get_ngrams(text, n=4):
+    # remove stopwords and punctuation
+    text = [word for word in text.split() if word not in stopwords.words('english')]
+    text = [word for word in text if word not in string.punctuation]
+
+    ngrams = zip(*[text[i:] for i in range(n)])
+    return [" ".join(ngram) for ngram in ngrams]
+
+
 def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
     rankings = []
     if metric_name == "semsim-ipc":
-        from transformers import BertTokenizer, BertForSequenceClassification
+        import torch
+        from transformers import BertTokenizer
+        from sentence_transformers import SentenceTransformer, util
+
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        checkpoint_path = "../ipc_cls/output/checkpoint_epoch3.pt"
-
+        checkpoint_path = "../ipc_cls/output/checkpoint_epoch3"        
         model_name = "../ipc_cls/bert-for-patents/"
+
         tokenizer = BertTokenizer.from_pretrained(model_name)
-
-        datasets = {'train': defaultdict(list), 'test': defaultdict(list)}
-        with open('../data/data_15_18.csv', newline='') as csvfile:
-            reader = csv.DictReader(csvfile, fieldnames=['date', 'decision', 'domain', 'claims', 'abstract'])
-            for row in tqdm(reader):
-                if row['date'][:4] in ['2016', '2017']:
-                    datasets['train']['labels'].append(row['domain'][:4])
-                    datasets['train']['labels'].append(row['domain'][:4])
-        train_dataset = pd.DataFrame(datasets['train'])
-
-        # convert label string into numbers
-        mlb = MultiLabelBinarizer()
-        mlb.fit_transform([[label] for label in list(set(train_dataset['labels'].to_list()))])
-
-        model = BertForSequenceClassification.from_pretrained(model_name, num_labels=len(mlb.classes_))
-        model.to(device)
-
-        # Wrap the model with DataParallel
-        model = nn.DataParallel(model)
+        tokenizer.save_pretrained(checkpoint_path)
+        # model = BertForSequenceClassification.from_pretrained(checkpoint_path, num_labels=617)
+        # model.to(device)
+        # model = nn.DataParallel(model).cuda()
         
-        # load last checkpoint
-        if torch.cuda.is_available():
-            checkpoint = torch.load(checkpoint_path)
-        else:
-            checkpoint = torch.load(checkpoint_path, map_location=torch.device("cpu"))
-        model.load_state_dict(checkpoint)
-        print(f"Resuming training from checkpoint: {checkpoint_path}")
+        model = SentenceTransformer(checkpoint_path, device=device, pooling_mode="cls")
+        for claim, abstract1, abstract2 in tqdm(zip(input_claims, output1_data, output2_data), total=len(input_claims)):
+            claim_embedding = model.encode(claim)
+            abstract1_embedding = model.encode(abstract1)
+            abstract2_embedding = model.encode(abstract2)
+
+            # compute cosine-similarities for each sentence with each other sentence
+            cosine_scores1 = util.pytorch_cos_sim(claim_embedding, abstract1_embedding)[0]
+            cosine_scores2 = util.pytorch_cos_sim(claim_embedding, abstract2_embedding)[0]
+
+            if cosine_scores1 > cosine_scores2:
+                rankings.append([1, 2])
+            elif cosine_scores1 < cosine_scores2:
+                rankings.append([2, 1])
+            else:
+                rankings.append([1, 1])
 
 
-        # from sentence_transformers import SentenceTransformer, util
-        # model = SentenceTransformer(model_path, device="cuda")
-
-        # #Sentences are encoded by calling model.encode()
-        # emb1 = model.encode("This is a red cat with a hat.")
-        # emb2 = model.encode("Have you seen my red cat?")
-
-        # cos_sim = util.cos_sim(emb1, emb2)
-        # print("Cosine-Similarity:", cos_sim)
     elif metric_name == "term-overlap":
         import spacy
         from pyate.term_extraction_pipeline import TermExtractionPipeline
@@ -133,10 +126,8 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
         nlp = spacy.load("en_core_web_sm")
         nlp.add_pipe("combo_basic")
 
-        # keep only first claim for each input_claims
-        input_claims = [c.split("2.")[0].strip() for c in input_claims]
-        print(inpiut_claims)
-        asdf
+        # # keep only first claim for each input_claims
+        # input_claims = [c.split("2.")[0].strip() for c in input_claims]
 
         for claim, abstract1, abstract2 in zip(input_claims, output1_data, output2_data):
             terms_claim = nlp(claim)._.combo_basic.sort_values(ascending=False)
@@ -149,12 +140,93 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
             terms_abstract2 = [k for k, v in terms_abstract2.to_dict().items() if v > 1.0]
 
             # get the number of overlapping terms between claim and abstract
-            overlap1 = len(set(terms_claim).intersection(set(terms_abstract1))) / len(set(terms_claim))
-            overlap2 = len(set(terms_claim).intersection(set(terms_abstract2))) / len(set(terms_claim))
+            # overlap1_p = len(set(terms_claim).intersection(set(terms_abstract1))) / len(set(terms_claim))
+            # overlap2_p = len(set(terms_claim).intersection(set(terms_abstract2))) / len(set(terms_claim))
+
+            overlap1 = len(set(terms_claim).intersection(set(terms_abstract1))) / len(set(terms_abstract1))
+            overlap2 = len(set(terms_claim).intersection(set(terms_abstract2))) / len(set(terms_abstract2))
+
 
             if overlap1 > overlap2:
                 rankings.append([1, 2])
             elif overlap1 < overlap2:
+                rankings.append([2, 1])
+            else:
+                rankings.append([1, 1])
+
+    elif metric_name == "ngram-overlap":
+        # keep only first claim for each input_claims
+        input_claims = [c.split("2.")[0].strip() for c in input_claims]
+
+        for claim, abstract1, abstract2 in tqdm(zip(input_claims, output1_data, output2_data), total=len(input_claims)):
+            claim_ngrams = get_ngrams(claim)
+            abstract1_ngrams = get_ngrams(abstract1)
+            abstract2_ngrams = get_ngrams(abstract2)
+
+            # get the number of overlapping terms between claim and abstract
+            overlap1_p = len(set(claim_ngrams).intersection(set(abstract1_ngrams))) / len(set(claim_ngrams))
+            overlap2_p = len(set(claim_ngrams).intersection(set(abstract2_ngrams))) / len(set(claim_ngrams))
+
+            overlap1_r = len(set(claim_ngrams).intersection(set(abstract1_ngrams))) / len(set(abstract1_ngrams))
+            overlap2_r = len(set(claim_ngrams).intersection(set(abstract2_ngrams))) / len(set(abstract2_ngrams))
+
+            try:
+                overlap1 = 2 / (1/overlap1_p + 1/overlap1_r)
+            except ZeroDivisionError:
+                if overlap1_p == 0 and overlap1_r == 0:
+                    overlap1 = 0
+                elif overlap1_p == 0:
+                    overlap1 = 2 / (1/0.0001 + 1/overlap1_r)
+                elif overlap1_r == 0:
+                    overlap1 = 2 / (1/overlap1_p + 1/0.0001)
+
+            try:
+                overlap2 = 2 / (1/overlap2_p + 1/overlap2_r)
+            except ZeroDivisionError:
+                if overlap2_p == 0 and overlap2_r == 0:
+                    overlap2 = 0
+                elif overlap2_p == 0:
+                    overlap2 = 2 / (1/0.0001 + 1/overlap2_r)
+                elif overlap2_r == 0:
+                    overlap2 = 2 / (1/overlap2_p + 1/0.0001)
+
+            if overlap1 > overlap2:
+                rankings.append([1, 2])
+            elif overlap1 < overlap2:
+                rankings.append([2, 1])
+            else:
+                rankings.append([1, 1])
+
+    elif metric_name == "qa-eval":
+        from qafacteval import QAFactEval
+        kwargs = {"cuda_device": 0, "use_lerc_quip": True, \
+                "verbose": True, "generation_batch_size": 32, \
+                "answering_batch_size": 32, "lerc_batch_size": 8}
+
+        model_folder = "../QAFactEval/models" # path to models downloaded with download_models.sh
+        metric = QAFactEval(
+            lerc_quip_path=f"{model_folder}/quip-512-mocha",
+            generation_model_path=f"{model_folder}/generation/model.tar.gz",
+            answering_model_dir=f"{model_folder}/answering",
+            lerc_model_path=f"{model_folder}/lerc/model.tar.gz",
+            lerc_pretrained_model_path=f"{model_folder}/lerc/pretraining.tar.gz",
+            **kwargs
+        )
+
+        input_claims = input_claims
+        output1_data = [[o] for o in output1_data]
+        output2_data = [[o] for o in output2_data]
+
+        results1 = metric.score_batch_qafacteval(input_claims, output1_data, return_qa_pairs=True)
+        results2 = metric.score_batch_qafacteval(input_claims, output2_data, return_qa_pairs=True)
+
+        for result1, result2 in zip(results1, results2):
+            score1 = result1[0]['qa-eval']['lerc_quip']
+            score2 = result2[0]['qa-eval']['lerc_quip']
+
+            if score1 > score2:
+                rankings.append([1, 2])
+            elif score1 < score2:
                 rankings.append([2, 1])
             else:
                 rankings.append([1, 1])

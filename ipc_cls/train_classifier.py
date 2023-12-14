@@ -99,91 +99,95 @@ test_dataset.loc[:, 'labels'] = test_dataset['labels'].apply(lambda x: mlb.trans
 # Set device (GPU if available, otherwise CPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Load pre-trained BERT model and tokenizer
 model_name = "./bert-for-patents/"
 tokenizer = BertTokenizer.from_pretrained(model_name)
-model = BertForSequenceClassification.from_pretrained(model_name, num_labels=len(mlb.classes_))
-model.to(device)
-
-# Wrap the model with DataParallel
-model = nn.DataParallel(model)
-
-train_data = MultiLabelDataset(train_dataset, tokenizer)
-
 
 train_params = {'batch_size': 64,
                 'shuffle': True,
-                'num_workers': 0
+                'num_workers': 4
                 }
 
 test_params = {'batch_size': 64,
                 'shuffle': True,
-                'num_workers': 0
+                'num_workers': 4
                 }
-EPOCHS = 1
+EPOCHS = 3
 LEARNING_RATE = 1e-05
 
 # Define the directory path where you want to save the model
 output_dir = "./output"
 
+train_data = MultiLabelDataset(train_dataset, tokenizer)
 training_loader = DataLoader(train_data, **train_params)
 # test_loader = DataLoader(test_data, **test_params)
 
-# Set optimizer and loss function
-optimizer = AdamW(model.parameters(), lr=LEARNING_RATE)
-loss_fn = torch.nn.CrossEntropyLoss()
 
 
 # Check if a saved checkpoint exists
 lst_epoch = 0
 checkpoints = sorted([fname for fname in os.listdir(output_dir) if fname.startswith('checkpoint')])
 if checkpoints:
-    checkpoint_path = os.path.join(output_dir, checkpoints[-1])
-    if torch.cuda.is_available():
-        checkpoint = torch.load(checkpoint_path)
-    else:
-        checkpoint = torch.load(checkpoint_path, map_location=torch.device("cpu"))
-    model.load_state_dict(checkpoint)
+    checkpoint_path = f"{output_dir}/{checkpoints[-1]}"
+    model = BertForSequenceClassification.from_pretrained(checkpoint_path, num_labels=len(mlb.classes_))
+    model.to(device)
+
     print(f"Resuming training from checkpoint: {checkpoint_path}")
     lst_epoch = int(checkpoint_path.split('_epoch')[1].split('.')[0])
 
+else:
+    # Load pre-trained BERT model and tokenizer
+    model = BertForSequenceClassification.from_pretrained(model_name, num_labels=len(mlb.classes_))
+    model.to(device)
 
-# # Enable mixed-precision training
-# scaler = GradScaler()
+# Wrap the model with DataParallel
+model = nn.DataParallel(model)
 
-# # Training loop
-# for epoch in range(lst_epoch, EPOCHS):
-#     model.train()
-#     train_loss = 0.0
+# Set optimizer and loss function
+optimizer = AdamW(model.parameters(), lr=LEARNING_RATE)
+loss_fn = torch.nn.CrossEntropyLoss()
 
-#     progress_bar = tqdm(training_loader, desc=f"Epoch {epoch + 1}/{EPOCHS}", leave=False)
-#     for data in progress_bar:
-#     # for _, data in enumerate(training_loader, 0):
-#         ids = data['ids'].to(device, dtype = torch.long)
-#         mask = data['mask'].to(device, dtype = torch.long)
-#         targets = data['targets'].to(device, dtype = torch.float)
+# Enable mixed-precision training
+scaler = GradScaler()
+
+# Training loop
+for epoch in range(lst_epoch, EPOCHS):
+    model.train()
+    train_loss = 0.0
+
+    progress_bar = tqdm(training_loader, desc=f"Epoch {epoch + 1}/{EPOCHS}", leave=False)
+    for data in progress_bar:
+    # for _, data in enumerate(training_loader, 0):
+        ids = data['ids'].to(device, dtype = torch.long)
+        mask = data['mask'].to(device, dtype = torch.long)
+        targets = data['targets'].to(device, dtype = torch.float)
         
-#         optimizer.zero_grad()
+        optimizer.zero_grad()
 
-#         # Use autocast to automatically cast operations to mixed precision
-#         with autocast():
-#             outputs = model(ids, attention_mask=mask)
-#             loss = loss_fn(outputs.logits, targets)
+        # Use autocast to automatically cast operations to mixed precision
+        with autocast():
+            outputs = model(ids, attention_mask=mask)
+            loss = loss_fn(outputs.logits, targets)
 
-#         # Perform backpropagation and optimization using the GradScaler
-#         scaler.scale(loss).backward()
-#         scaler.step(optimizer)
-#         scaler.update()
+        # Perform backpropagation and optimization using the GradScaler
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
-#         train_loss += loss.item()
+        train_loss += loss.item()
         
-#         # Update the progress bar
-#         progress_bar.set_postfix({"Train Loss": loss.item()})
+        # Update the progress bar
+        progress_bar.set_postfix({"Train Loss": loss.item()})
 
-#     # Save checkpoint after each epoch
-#     checkpoint_path = f"{output_dir}/checkpoint_epoch{epoch + 1}.pt"
-#     torch.save(model.state_dict(), checkpoint_path)
-#     print(f"Checkpoint saved: {checkpoint_path}")
+    # Save checkpoint after each epoch
+    # checkpoint_path = f"{output_dir}/checkpoint_epoch{epoch + 1}.pt"
+    # torch.save(model.state_dict(), checkpoint_path)
+    # print(f"Checkpoint saved: {checkpoint_path}")
+
+    # Saving Model, Configuration, and Tokenizer
+    model_to_save = model.module if hasattr(model, 'module') else model  # Take care of DataParallel
+    model_to_save.save_pretrained(f"{output_dir}/checkpoint_epoch{epoch + 1}")
+
+
     
 # Validation for dataset1
 model.eval()
