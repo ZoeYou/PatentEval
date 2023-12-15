@@ -70,8 +70,11 @@ def get_ground_truths(ground_truths_file, task_name):
 
     # repeat each index two time continuously
     idx = [x for x in idx for i in range(2)]
-    orig_data = df.iloc[idx].reset_index(drop=True)[column_name].tolist()
-    return orig_data
+    orig_data = df.iloc[idx].reset_index(drop=True)
+    if task_name == "c2a":
+        return orig_data[column_name].tolist()
+    elif task_name == "c2c":
+        return orig_data[column_name].tolist(), orig_data["is_dependent"].tolist()
 
 
 def get_ngrams(text, n=4):
@@ -83,9 +86,9 @@ def get_ngrams(text, n=4):
     return [" ".join(ngram) for ngram in ngrams]
 
 
-def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
+def get_metric_rankings(output1_data, output2_data, input_claims, task_name, metric_name, is_dependent_list=None):
     rankings = []
-    if metric_name == "semsim-ipc":
+    if task_name == "c2a" and metric_name == "semsim-ipc":
         import torch
         from transformers import BertTokenizer
         from sentence_transformers import SentenceTransformer, util
@@ -101,11 +104,12 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
         # model.to(device)
         # model = nn.DataParallel(model).cuda()
         
-        model = SentenceTransformer(checkpoint_path, device=device, pooling_mode="cls")
+        model = SentenceTransformer(checkpoint_path, device=device)
         for claim, abstract1, abstract2 in tqdm(zip(input_claims, output1_data, output2_data), total=len(input_claims)):
-            claim_embedding = model.encode(claim)
-            abstract1_embedding = model.encode(abstract1)
-            abstract2_embedding = model.encode(abstract2)
+
+            claim_embedding = model.encode("[claims] "+claim)
+            abstract1_embedding = model.encode("[abstrct] "+abstract1)
+            abstract2_embedding = model.encode("[abstract] "+abstract2)
 
             # compute cosine-similarities for each sentence with each other sentence
             cosine_scores1 = util.pytorch_cos_sim(claim_embedding, abstract1_embedding)[0]
@@ -119,7 +123,7 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
                 rankings.append([1, 1])
 
 
-    elif metric_name == "term-overlap":
+    elif task_name == "c2a" and metric_name == "term-overlap":
         import spacy
         from pyate.term_extraction_pipeline import TermExtractionPipeline
 
@@ -186,7 +190,7 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
             else:
                 rankings.append([1, 1])
 
-    elif metric_name == "ngram-overlap":
+    elif task_name == "c2a" and metric_name == "ngram-overlap":
         # keep only first claim for each input_claims
         input_claims = [c.split("2.")[0].strip() for c in input_claims]
 
@@ -229,7 +233,7 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
             else:
                 rankings.append([1, 1])
 
-    elif metric_name == "qa-eval":
+    elif task_name == "c2a" and metric_name == "qa-eval":
         from qafacteval import QAFactEval
         kwargs = {"cuda_device": 0, "use_lerc_quip": True, \
                 "verbose": True, "generation_batch_size": 32, \
@@ -263,6 +267,21 @@ def get_metric_rankings(output1_data, output2_data, input_claims, metric_name):
             else:
                 rankings.append([1, 1])
 
+    elif task_name == "c2c" and metric_name == "claim_rules":
+        from claim_rules import Rule_based_checker
+
+        for claim, abstract1, abstract2, is_dependent in tqdm(zip(input_claims, output1_data, output2_data, is_dependent_list), total=len(input_claims)):
+
+            checker1 = Rule_based_checker(claim, abstract1, required_dependent=is_dependent)
+            checker2 = Rule_based_checker(claim, abstract2, required_dependent=is_dependent)
+
+            if checker1.score() > checker2.score():
+                rankings.append([1, 2])
+            elif not checker1.score() < checker2.score():
+                rankings.append([2, 1])
+            else:
+                rankings.append([1, 1])
+
     return rankings
 
 
@@ -279,14 +298,17 @@ def main():
     annotation_file = f"./annotations/version3_{task_name}.json"
     output1_data, output2_data, input_claims, human_rankings = read_pairs(annotation_file)
 
-    # read ground truths data 
-    if task_name == "c2c":
-        ground_truths_file = "../data/eval_data_c2c.csv"
-    elif task_name == "c2a":
-        ground_truths_file = "../data/eval_data.csv"
-    ground_truths = get_ground_truths(ground_truths_file, task_name)    # usually not allowed to use for real case ?
 
-    metric_rankings = get_metric_rankings(output1_data, output2_data, input_claims, metric_name)
+    if task_name == "c2c":
+        # read ground truths data 
+        ground_truths_file = "../data/eval_data_c2c.csv"
+        _, is_dependent_list = get_ground_truths(ground_truths_file, task_name)
+        metric_rankings = get_metric_rankings(output1_data, output2_data, input_claims, task_name, metric_name, is_dependent_list)
+
+    elif task_name == "c2a":
+        # ground_truths_file = "../data/eval_data.csv"
+        # ground_truths = get_ground_truths(ground_truths_file, task_name)
+        metric_rankings = get_metric_rankings(output1_data, output2_data, input_claims, task_name, metric_name)
 
     # Calculate Kendall's Tau
     tau, p_value = kendalltau(metric_rankings, human_rankings)
