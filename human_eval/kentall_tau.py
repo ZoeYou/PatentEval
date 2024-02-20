@@ -88,7 +88,7 @@ def get_ngrams(text, n=4):
 
 def get_metric_rankings(output1_data, output2_data, input_claims, task_name, metric_name, is_dependent_list=None):
     rankings = []
-    if task_name == "c2a" and metric_name == "semsim-ipc":
+    if metric_name == "semsim-ipc":
         import torch
         from transformers import BertTokenizer
         from sentence_transformers import SentenceTransformer, util
@@ -97,31 +97,60 @@ def get_metric_rankings(output1_data, output2_data, input_claims, task_name, met
 
         checkpoint_path = "../ipc_cls/output/checkpoint_epoch3"        
         model_name = "../ipc_cls/bert-for-patents/"
+        # checkpoint_path = model_name
 
         tokenizer = BertTokenizer.from_pretrained(model_name)
         tokenizer.save_pretrained(checkpoint_path)
         # model = BertForSequenceClassification.from_pretrained(checkpoint_path, num_labels=617)
         # model.to(device)
         # model = nn.DataParallel(model).cuda()
-        
         model = SentenceTransformer(checkpoint_path, device=device)
-        for claim, abstract1, abstract2 in tqdm(zip(input_claims, output1_data, output2_data), total=len(input_claims)):
 
-            claim_embedding = model.encode("[claims] "+claim)
-            abstract1_embedding = model.encode("[abstrct] "+abstract1)
-            abstract2_embedding = model.encode("[abstract] "+abstract2)
+        if task_name == "c2a":
+            for claim, abstract1, abstract2 in tqdm(zip(input_claims, output1_data, output2_data), total=len(input_claims)):
 
-            # compute cosine-similarities for each sentence with each other sentence
-            cosine_scores1 = util.pytorch_cos_sim(claim_embedding, abstract1_embedding)[0]
-            cosine_scores2 = util.pytorch_cos_sim(claim_embedding, abstract2_embedding)[0]
+                claim_embedding = model.encode("[claims] "+claim)
+                abstract1_embedding = model.encode("[abstrct] "+abstract1)
+                abstract2_embedding = model.encode("[abstract] "+abstract2)
 
-            if cosine_scores1 > cosine_scores2:
-                rankings.append([1, 2])
-            elif cosine_scores1 < cosine_scores2:
-                rankings.append([2, 1])
-            else:
-                rankings.append([1, 1])
+                # compute cosine-similarities for each sentence with each other sentence
+                cosine_scores1 = util.pytorch_cos_sim(claim_embedding, abstract1_embedding)[0]
+                cosine_scores2 = util.pytorch_cos_sim(claim_embedding, abstract2_embedding)[0]
 
+                if cosine_scores1 > cosine_scores2:
+                    rankings.append([1, 2])
+                elif cosine_scores1 < cosine_scores2:
+                    rankings.append([2, 1])
+                else:
+                    rankings.append([1, 1])
+
+        elif task_name == "c2c":
+            from claim_rules import Rule_based_checker
+            for claim, output_claim1, output_claim2, is_dependent in tqdm(zip(input_claims, output1_data, output2_data, is_dependent_list), total=len(input_claims)):
+                # normlize by rule-based checker
+
+                checker1 = Rule_based_checker(claim, output_claim1, required_dependent=is_dependent)
+                checker2 = Rule_based_checker(claim, output_claim2, required_dependent=is_dependent)
+
+                rule_based_score1 = checker1.score()
+                rule_based_score2 = checker2.score()
+
+
+                claim_embedding = model.encode("[claims] "+claim)
+
+                output_claim1_embedding = model.encode("[claims] "+claim+"\n\n"+output_claim1)
+                output_claim2_embedding = model.encode("[claims] "+claim+"\n\n"+output_claim2)
+
+                # compute cosine-similarities for each sentence with each other sentence
+                cosine_scores1 = util.pytorch_cos_sim(claim_embedding, output_claim1_embedding)[0] * rule_based_score1
+                cosine_scores2 = util.pytorch_cos_sim(claim_embedding, output_claim2_embedding)[0] * rule_based_score2
+
+                if cosine_scores1 > cosine_scores2:
+                    rankings.append([1, 2])
+                elif cosine_scores1 < cosine_scores2:
+                    rankings.append([2, 1])
+                else:
+                    rankings.append([1, 1])
 
     elif task_name == "c2a" and metric_name == "term-overlap":
         import spacy
@@ -270,10 +299,9 @@ def get_metric_rankings(output1_data, output2_data, input_claims, task_name, met
     elif task_name == "c2c" and metric_name == "claim_rules":
         from claim_rules import Rule_based_checker
 
-        for claim, abstract1, abstract2, is_dependent in tqdm(zip(input_claims, output1_data, output2_data, is_dependent_list), total=len(input_claims)):
-
-            checker1 = Rule_based_checker(claim, abstract1, required_dependent=is_dependent)
-            checker2 = Rule_based_checker(claim, abstract2, required_dependent=is_dependent)
+        for claim, output_claim1, output_claim2, is_dependent in tqdm(zip(input_claims, output1_data, output2_data, is_dependent_list), total=len(input_claims)):
+            checker1 = Rule_based_checker(claim, output_claim1, required_dependent=is_dependent)
+            checker2 = Rule_based_checker(claim, output_claim2, required_dependent=is_dependent)
 
             if checker1.score() > checker2.score():
                 rankings.append([1, 2])

@@ -95,6 +95,8 @@ mlb.fit_transform([[label] for label in list(set(train_dataset['labels'].to_list
 train_dataset.loc[:, 'labels'] = train_dataset['labels'].apply(lambda x: mlb.transform([[x]])[0])
 test_dataset.loc[:, 'labels'] = test_dataset['labels'].apply(lambda x: mlb.transform([[x]])[0])
 
+print("Train dataset size:", len(train_dataset)
+        , "\nTest dataset size:", len(test_dataset))
 
 # Set device (GPU if available, otherwise CPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -177,11 +179,6 @@ for epoch in range(lst_epoch, EPOCHS):
         
         # Update the progress bar
         progress_bar.set_postfix({"Train Loss": loss.item()})
-
-    # Save checkpoint after each epoch
-    # checkpoint_path = f"{output_dir}/checkpoint_epoch{epoch + 1}.pt"
-    # torch.save(model.state_dict(), checkpoint_path)
-    # print(f"Checkpoint saved: {checkpoint_path}")
 
     # Saving Model, Configuration, and Tokenizer
     model_to_save = model.module if hasattr(model, 'module') else model  # Take care of DataParallel
