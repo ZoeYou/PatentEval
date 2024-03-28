@@ -7,25 +7,29 @@ class Rule_based_checker(object):
         self.input_claims = input_claims
         self.generated_claim = generated_claim
         self.required_dependent = required_dependent
-        self.trans_phrases = ["further_comprising", "further_configured_to", "comprising", "consisting_of", "wherein", "in_which", "whereby", "such_that", "so_as_to", "characterized_in_that"]
+        self.trans_phrases = ["further_comprising", "furthre_comprises", "further_configured_to", "comprising", "consisting_of", "wherein", "in_which", "whereby", "such_that", "so_as_to", "characterized_in_that"]
 
         # extract the numberings of the input claims
         self.input_numberings = re.findall(r'[\s\n]?(\d+)[.)] ', self.input_claims)
         self.input_numberings = [int(numbering) for numbering in self.input_numberings if numbering != '']
 
+
     def numbering_coherence(self):
-        # check if the numbering of the generated claim is coherent with the input claims
-        # return True if the numbering is coherent, False otherwise
-        # e.g. input claims: [1, 2, 3, 4, 5], generated claim: 6, return True
-        # e.g. input claims: [1, 2, 3, 4, 5], generated claim: 7, return False
+        """
+        check if the numbering of the generated claim is coherent with the input claims
+        return True if the numbering is coherent, False otherwise
+        e.g. input claims: [1, 2, 3, 4, 5], generated claim: 6, return True
+        e.g. input claims: [1, 2, 3, 4, 5], generated claim: 7, return False
+        """
 
         # extract the numbering of the generated claim
         generated_numbering = re.findall(r'[\s\n]?(\d+)[.)] ', self.generated_claim)
         if len(generated_numbering) == 0:
             return False
+
         generated_numbering = int(generated_numbering[0]) if generated_numbering[0] != '' else int(generated_numbering[1])
 
-        # check if the numbering of the generated claim is coherent with the input claims
+        # check if the input claims are not empty
         assert len(self.input_claims) != 0 and len(self.input_numberings) != 0
 
         if generated_numbering != self.input_numberings[-1] + 1:
@@ -33,32 +37,41 @@ class Rule_based_checker(object):
         return True
     
 
-    def depedency_correctness(self):
-        # check if the dependency of the generated claim is correct as required
-        # return True if the dependency is correct, False otherwise
+    def dependency_correctness(self):
+        """ 
+        check if the dependency of the generated claim is correct as required
+        return True if the dependency is correct, False otherwise
+        """
 
         # extract the dependency of the generated claim
-        is_dependent = re.search(r'claim \d+|claims', self.generated_claim)
+        is_dependent = (not re.search("^A |^An ", self.generated_claim)) or ("according to" in claim_text and re.search(r"\sclaims?[\s,]", self.generated_claim)
 
         if self.required_dependent and is_dependent is None:
             return False
-        if not self.required_dependent and is_dependent is not None:
+        if (not self.required_dependent) and (is_dependent is not None):
             return False
         
         if is_dependent:
-            # extract the numbering of the generated claim
-            dependent_claim_numbering = re.findall(r'claims? (\d+)', self.generated_claim)
-            try:
-                dependent_claim_numbering = int(dependent_claim_numbering[0])
-            except IndexError:
-                if " any preceding claims" in self.generated_claim:
-                    return True
+            # extract the numbering of the dependent claim
+            # dependent_claim_numbering = re.findall(r'claims? (\d+)', self.generated_claim)
+            rereferences = re.compile(r'(Claims? (?P<range_start>\d+)(?: to (?:Claims? )?|-)(?P<range_end>\d+))|(Claims (?P<or_claim1>\d+) or (?P<or_claim2>\d+))|Claim (?P<single_claim>\d+)|(?P<any_preceding>any preceding Claims)|(?P<aforementioned>one of the aforementioned claims)', re.IGNORECASE)
+            for m in rereferences.finditer(self.generated_claim):
+                if m.group('range_start') and m.group('range_end'):
+                    dependent_claim_numbering = list(range(int(m.group('range_start')), int(m.group('range_end'))+1))
+                elif m.group('or_claim1') and m.group('or_claim2'):
+                    dependent_claim_numbering = [int(m.group('or_claim1')), int(m.group('or_claim2'))]
+                elif m.group('single_claim'):
+                    dependent_claim_numbering = [int(m.group('single_claim'))]
+                elif m.group('any_preceding') or m.group('aforementioned'):
+                    dependent_claim_numbering = list(range(1, self.input_numberings[-1]))
                 else:
-                    return False
+                    dependent_claim_numbering = []
 
             # check if the dependency of the generated claim is in the input claims
-            if dependent_claim_numbering not in self.input_numberings:
-                return False
+            dependent_claim_numbering = [int(numbering) for numbering in dependent_claim_numbering]
+            for n in dependent_claim_numbering:
+                if n not in self.input_numberings:
+                    return False
 
         return True
     
@@ -70,19 +83,20 @@ class Rule_based_checker(object):
 
 
     def punctuations_correctness(self):
-        # check if the punctuations of the generated claim is correct as required
-        # return True if the punctuations is correct, False otherwise
+        """
+        check if the punctuations of the generated claim is correct as required
+        return True if the punctuations is correct, False otherwise
+        """
 
         # extract the punctuations of the generated claim
-        punctuations = re.findall(r'[,.?!]', self.generated_claim)
+        punctuations = re.findall(r'[.,;:!?]', self.generated_claim)
         if len(punctuations) == 0:
             return False
-        if punctuations[-1] != '.':
+        if self.generated_claim.strip()[-1] != '.':
             return False
 
         # split by list in trans_phrases
         before, _, _ = self._befaft(self.generated_claim, " ".join(self.trans_phrases))
-        
 
         if len(before) > 0 and before.strip()[-1] != ',':
             return False
@@ -90,17 +104,21 @@ class Rule_based_checker(object):
     
 
     def parenthesis_correctness(self):
-        # check if is the case that only numbers are in parenthesis
-        # return True if the parenthesis is correct, False otherwise
+        """
+        check if is the case that only numbers are in parenthesis (numberings of technical features)
+        return True if the parenthesis is correct, False otherwise
+        """
 
         # extract the parenthesis of the generated claim
-        parenthesis = re.findall(r'\((.*?)\)', self.generated_claim)
+        parenthesis = re.findall(r'(?<=\s)\([^\)]*\)(?=\s|\-)', self.generated_claim)
+        
         if len(parenthesis) == 0:
             True
-        for p in parenthesis:
-            if not p.isdigit():
-                return False
-        return True
+        else:
+            for p in parenthesis:
+                if not p.isdigit() and len(p) == 1: # if the parenthesis is not a number and has only one character
+                    return False
+            return True
 
 
     def _remove_repetitive_spans(self):
@@ -114,20 +132,24 @@ class Rule_based_checker(object):
 
 
     def no_hallucination(self):
-        # check if the generated claim is hallucinated (repetition of phrases over three times)
-        # return True if the generated claim is not hallucinated, False otherwise
+        """
+        check if the generated claim is hallucinated (repetition of phrases over three times)
+        return True if the generated claim is not hallucinated, False otherwise
+        """
 
         # remove repetitive spans
-        first_instance = self._remove_repetitive_spans()
+        cleaned_generation = self._remove_repetitive_spans()
         # check if the generated claim is hallucinated
-        if first_instance == self.generated_claim:
+        if cleaned_generation == self.generated_claim:
             return True
         return False
     
 
     def distinctive_claim(self):
-        # check if the generated claim is distinctive
-        # return True if the generated claim is distinctive, False otherwise
+        """
+        check if the generated claim is distinctive
+        return True if the generated claim is distinctive, False otherwise
+        """
 
         # remove numbering of the beginning of the generated claim
         generated_claim = re.sub(r'^(\d+)[.)] ', '', self.generated_claim).rstrip(" \n.")
@@ -149,22 +171,22 @@ class Rule_based_checker(object):
         # check if the numbering of the generated claim is coherent with the input claims
         numbering_coherence = self.numbering_coherence()
         # check if the dependency of the generated claim is correct as required
-        depedency_correctness = self.depedency_correctness()
+        dependency_correctness = self.dependency_correctness()
         # check if the punctuations of the generated claim is correct as required
         punctuations_correctness = self.punctuations_correctness()
         # check if is the case that only numbers are in parenthesis
         parenthesis_correctness = self.parenthesis_correctness()
         # check if the generated claim is hallucinated
-        hallucination = self.no_hallucination()
+        no_hallucination = self.no_hallucination()
         # check if the generated claim is distinctive
         distinctive = self.distinctive_claim()
 
         return {
             "numbering_coherence": numbering_coherence,
-            "depedency_correctness": depedency_correctness,
+            "dependency_correctness": dependency_correctness,
             "punctuations_correctness": punctuations_correctness,
             "parenthesis_correctness": parenthesis_correctness,
-            "hallucination": hallucination,
+            "no_hallucination": no_hallucination,
             "distinctive": distinctive
         }
     
@@ -176,14 +198,15 @@ class Rule_based_checker(object):
         results = self.check()
 
         score = 0
-        if not results['distinctive']:  return score
-
-        # score the generated claim
-        for result in results.values():
-            if result:
-                score += 1
-        return score / len(results)
-        
+        if not results['distinctive']:  
+            return score    # if the generated claim is not distinctive, return 0
+        else:
+            # score the generated claim
+            for result in results.values():
+                if result:
+                    score += 1
+            return score / len(results)
+            
 
 
         
