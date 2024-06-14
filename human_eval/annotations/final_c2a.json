@@ -7827,12 +7827,7 @@
       }
     ],
     "dimension2": "Grammar Errors",
-    "dimension1": {
-      "choices": [
-        "Irrelevant Content (Deviation from Subject Matter)",
-        "Incomplete Coverage (Missing Key Components)"
-      ]
-    },
+    "dimension1": "Incomplete Coverage (Missing Key Components)",
     "comparison": [
       {
         "selected": "right"
@@ -7841,8 +7836,8 @@
     "annotator": 13391,
     "annotation_id": 26006802,
     "created_at": "2023-11-08T17:29:01.392027Z",
-    "updated_at": "2023-11-08T17:29:01.392052Z",
-    "lead_time": 248.971,
+    "updated_at": "2024-04-01T18:00:19.498952Z",
+    "lead_time": 768.123,
     "agreement": 100.0
   },
   {
@@ -8925,11 +8920,7 @@
         "Unclarity (Vague or ambiguous descriptions)"
       ]
     },
-    "dimension2": {
-      "choices": [
-        "Incomplete Coverage (Missing Key Components)"
-      ]
-    },
+    "dimension2": "Incomplete Coverage (Missing Key Components)",
     "comparison": [
       {
         "selected": "right"
@@ -8938,8 +8929,8 @@
     "annotator": 13391,
     "annotation_id": 26008823,
     "created_at": "2023-11-08T19:08:46.642144Z",
-    "updated_at": "2023-11-08T19:08:46.642164Z",
-    "lead_time": 143.012,
+    "updated_at": "2024-03-27T21:24:24.347622Z",
+    "lead_time": 28049.128,
     "agreement": 100.0
   },
   {
