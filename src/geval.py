@@ -163,7 +163,7 @@ def calculate_weighted_score(evaluations):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--path_data', type=str, default="./data/eval_data.csv")
+parser.add_argument('--path_data', type=str, default="./data/eval_data_c2a.csv")
 parser.add_argument('--path_prediction', required=True, type=str)
 parser.add_argument('--aspect', type=str, required=False, choices={"factuality", "relevance", "coherence"})
 parser.add_argument('--path_evalution', type=str, default="./evaluations")
@@ -174,7 +174,7 @@ args = parser.parse_args()
 if __name__ == '__main__':
     df = pd.read_csv(args.path_data)
 
-    if "eval_data.csv" in args.path_data:
+    if "eval_data_c2a.csv" in args.path_data:
         abstracts, claims = df['abstract'].to_list(), df['claims'].to_list()
         predictions = pd.read_csv(args.path_prediction)['abstract'].fillna('').to_list()
     elif "eval_data_c2c.csv" in args.path_data:
@@ -220,7 +220,7 @@ if __name__ == '__main__':
         os.makedirs(path_eval)
     method = args.path_prediction.split('/')[-1].split('.')[0]
     path_output = os.path.join(path_eval, f'{method}_{args.aspect}.eval')
-    if "eval_data.csv" in args.path_data:
+    if "eval_data_c2a.csv" in args.path_data:
         eval_df = pd.DataFrame({"orig_claims": claims, "orig_abstract": abstracts, "generated_abstract": predictions, "eval": evaluations, "label": weighted_scores})
     elif "eval_data_c2c.csv" in args.path_data:
         eval_df = pd.DataFrame({"orig_claims": claims, "generated_claim": predictions, "eval": evaluations, "label": weighted_scores})

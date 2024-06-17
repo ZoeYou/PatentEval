@@ -44,7 +44,7 @@ class Rule_based_checker(object):
         """
 
         # extract the dependency of the generated claim
-        is_dependent = (not re.search("^A |^An ", self.generated_claim)) or ("according to" in claim_text and re.search(r"\sclaims?[\s,]", self.generated_claim)
+        is_dependent = (not re.search("^\d+. A |^\d+. An ", self.generated_claim)) or ("according to" in self.generated_claim and re.search(r"\sclaims?[\s,]", self.generated_claim))
 
         if self.required_dependent and is_dependent is None:
             return False
@@ -53,8 +53,8 @@ class Rule_based_checker(object):
         
         if is_dependent:
             # extract the numbering of the dependent claim
-            # dependent_claim_numbering = re.findall(r'claims? (\d+)', self.generated_claim)
-            rereferences = re.compile(r'(Claims? (?P<range_start>\d+)(?: to (?:Claims? )?|-)(?P<range_end>\d+))|(Claims (?P<or_claim1>\d+) or (?P<or_claim2>\d+))|Claim (?P<single_claim>\d+)|(?P<any_preceding>any preceding Claims)|(?P<aforementioned>one of the aforementioned claims)', re.IGNORECASE)
+            rereferences = re.compile(r'(Claims? (?P<range_start>\d+)(?: to (?:Claims? )?|-)(?P<range_end>\d+))|(Claims? (?P<or_claim1>\d+)((, (?P<or_claim_list>\d+))* or (?:Claims? )?(?P<or_claim2>\d+)))|Claim (?P<single_claim>\d+)|(?P<any_preceding>any (?:(?:one )?of the )?preceding Claims)|(?P<aforementioned>one of the aforementioned claims)', re.IGNORECASE)
+            dependent_claim_numbering = []
             for m in rereferences.finditer(self.generated_claim):
                 if m.group('range_start') and m.group('range_end'):
                     dependent_claim_numbering = list(range(int(m.group('range_start')), int(m.group('range_end'))+1))
@@ -64,8 +64,11 @@ class Rule_based_checker(object):
                     dependent_claim_numbering = [int(m.group('single_claim'))]
                 elif m.group('any_preceding') or m.group('aforementioned'):
                     dependent_claim_numbering = list(range(1, self.input_numberings[-1]))
-                else:
-                    dependent_claim_numbering = []
+
+            if len(dependent_claim_numbering) == 0:
+                dependent_claim_numbering = re.findall(r'(\d+)', self.generated_claim.split('claims')[-1])
+                if len(dependent_claim_numbering) == 0:
+                    return False
 
             # check if the dependency of the generated claim is in the input claims
             dependent_claim_numbering = [int(numbering) for numbering in dependent_claim_numbering]
@@ -101,24 +104,6 @@ class Rule_based_checker(object):
         if len(before) > 0 and before.strip()[-1] != ',':
             return False
         return True
-    
-
-    def parenthesis_correctness(self):
-        """
-        check if is the case that only numbers are in parenthesis (numberings of technical features)
-        return True if the parenthesis is correct, False otherwise
-        """
-
-        # extract the parenthesis of the generated claim
-        parenthesis = re.findall(r'(?<=\s)\([^\)]*\)(?=\s|\-)', self.generated_claim)
-        
-        if len(parenthesis) == 0:
-            True
-        else:
-            for p in parenthesis:
-                if not p.isdigit() and len(p) == 1: # if the parenthesis is not a number and has only one character
-                    return False
-            return True
 
 
     def _remove_repetitive_spans(self):
@@ -174,8 +159,6 @@ class Rule_based_checker(object):
         dependency_correctness = self.dependency_correctness()
         # check if the punctuations of the generated claim is correct as required
         punctuations_correctness = self.punctuations_correctness()
-        # check if is the case that only numbers are in parenthesis
-        parenthesis_correctness = self.parenthesis_correctness()
         # check if the generated claim is hallucinated
         no_hallucination = self.no_hallucination()
         # check if the generated claim is distinctive
@@ -185,7 +168,6 @@ class Rule_based_checker(object):
             "numbering_coherence": numbering_coherence,
             "dependency_correctness": dependency_correctness,
             "punctuations_correctness": punctuations_correctness,
-            "parenthesis_correctness": parenthesis_correctness,
             "no_hallucination": no_hallucination,
             "distinctive": distinctive
         }

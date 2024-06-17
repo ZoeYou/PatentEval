@@ -194,7 +194,7 @@ def get_abstract(claims, maxsize=512, numberTries=0, max_retries=5):
       
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--path_data', type=str, default="./data/eval_data.csv")
+parser.add_argument('--path_data', type=str, default="./data/eval_data_c2a.csv")
 parser.add_argument('--pretrained_model', type=str, default='M2')
 parser.add_argument('--path_prediction', type=str, default="./predictions")
 

@@ -66,12 +66,12 @@ with open('./data/data_15_18.csv', newline='') as csvfile:
                 break
 
 df = pd.DataFrame(df_dict)
-df.to_csv('./data/eval_data.csv', index=False)
+df.to_csv('./data/eval_data_c2a.csv', index=False)
 #=======================================================================================#
 
 #=======================================================================================#
 # statistics 
-df = pd.read_csv('./data/eval_data.csv')
+df = pd.read_csv('./data/eval_data_c2a.csv')
 domains = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 for d in domains:
     sub_df = df[df['domain']==d]

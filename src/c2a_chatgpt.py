@@ -44,7 +44,7 @@ def generate_abstract(claims, numberTries=0, gptChoice=0, maxsize=4097, exponent
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--path_data', type=str, default="./data/eval_data.csv")
+parser.add_argument('--path_data', type=str, default="./data/eval_data_c2a.csv")
 parser.add_argument('--path_prediction', type=str, default="./predictions")
 args = parser.parse_args()
 

@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 
 pattern_numbering = r"\. \d+[\.:)] |^1[\.:)] "
-df = pd.read_csv('./data/eval_data.csv')
+df = pd.read_csv('./data/eval_data_c2a.csv')
 
 inputs, real_next_claims, is_dependent = [], [], []
 domains = df['domain'].tolist()

@@ -12,26 +12,23 @@ import string
 import sys, os
 
 
-# def get_rank(annotation_list):
-#     res = []
-#     for line in annotation_list:
-#         if line["type"] == "pairwise":
-#             if line["value"]["selected"] == "left":
-#                 res.append(1)
-#                 res.append(2)
-#             elif line["value"]["selected"] == "right": 
-#                 res.append(2)
-#                 res.append(1)
-#     if res == []:   # if no annotation, return 1, 1 (draw)
-#         res = [1, 1]
-#     return res
 
 
-def read_pairs(annotation_file):
+def read_pairs(annotation_file, task="c2c"):
     """
     read the selected pairs information from jsonl
     """
-    with open(annotation_file) as f:  annotations = json.load(f)
+    
+
+    if task == "c2c":
+        with open(annotation_file) as f:  annotation_lines = json.load(f)
+        annotations = []
+        for annot in annotation_lines:
+            if annot['annotator'] == 13391:
+                annotations.append(annot)
+    else:
+        with open(annotation_file) as f:  annotations = json.load(f)
+
 
     human_rankings, input1_data, input2_data, input_claims = [], [], [], []
     for annot in annotations:
@@ -47,27 +44,6 @@ def read_pairs(annotation_file):
         else:
             human_rankings.append([1, 1])
 
-        # selected_annotations = []
-        # input1_data.append(annot["data"]["output1"])
-        # input2_data.append(annot["data"]["output2"])
-        # input_claims.append(annot["data"]["input_claim"])
-
-        # for la in annot["annotations"]:
-        #     if "zuo" in la["completed_by"]["email"].lower():
-        #         selected_annotations.append(la)
-
-        # if len(selected_annotations) > 0:
-        #     annot["annotations"] = [d["result"] for d in selected_annotations][0]
-        #     annot["annotations"] = [a for a in annot["annotations"] if a["type"] != "labels"]
-        #     annotation_lines.append(annot["annotations"])
-        # else: # skipped or emply annotations
-        #     annot["annotations"] = []
-        #     annotation_lines.append(annot["annotations"])
-
-    # # get ranking for each pair
-    # human_rankings = []
-    # for line in annotation_lines:
-    #     human_rankings.append(get_rank(line))
     return input1_data, input2_data, input_claims, human_rankings
   
 
@@ -114,7 +90,8 @@ def get_metric_rankings(output1_data, output2_data, input_claims, task_name, met
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        checkpoint_path = "./ipc_cls/output/checkpoint_epoch3"        
+        checkpoint_path = "./ipc_cls/output/checkpoint_epoch3"
+        # checkpoint_path = "./ipc_cls/bert-for-patents/"        
         model_path = "./ipc_cls/bert-for-patents/"
 
         tokenizer = BertTokenizer.from_pretrained(model_path)
