@@ -3,14 +3,14 @@
 ### Annotation Tool
 We used [**Label Studio**](https://labelstud.io/) for the annotation of our project. Label Studio is an open-source labeling platform that supports various machine learning annotation tasks with customizable and user-friendly patterns and interfaces.
 
-During the annotation, we also provided information such as the number of words in each text, the primary patent IPC domain of the patent, and highlighted words that did not appear in the input texts. More details can be checked in the preprocessed JSON files that were uploaded to the platform for annotation:
+During the annotation, we also provided information such as the number of words in each text, the primary patent IPC domain of the patent, and highlighted words that did not appear in the input texts. More details can be checked in the preprocessed JSON files that were uploaded to the platform for starting annotation:
 
 - claims-to-abstract [`human_eval/preprocessed_for_annotation/human_eval_c2a.json`](https://github.com/ZoeYou/PatentEval/blob/main/human_eval/preprocessed_for_annotation/human_eval_c2a.json)
 - next-claim generation [`human_eval/preprocessed_for_annotation/human_eval_c2c.json`](https://github.com/ZoeYou/PatentEval/blob/main/human_eval/preprocessed_for_annotation/human_eval_c2c.json)
 
-### Dataset
+### Annotated Dataset
 
-We show our annotations by exporting the JSON files directly from Label Studio:
+We show our final annotations by exporting the JSON files directly from Label Studio:
 
 [`human_eval/annotations/final_c2a.json`](https://github.com/ZoeYou/PatentEval/blob/main/human_eval/annotations/final_c2a.json) for claims-to-abstract generation, and [`human_eval/annotations/final_c2c.json`](https://github.com/ZoeYou/PatentEval/blob/main/human_eval/annotations/final_c2c.json) for next-claim generation.
 
