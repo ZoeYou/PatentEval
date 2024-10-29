@@ -30,10 +30,10 @@ def read_pairs(annotation_file, task="c2c"):
         with open(annotation_file) as f:  annotations = json.load(f)
 
 
-    human_rankings, input1_data, input2_data, input_claims = [], [], [], []
+    human_rankings, output1_data, output2_data, input_claims = [], [], [], []
     for annot in annotations:
-        input1_data.append(annot["output1"])
-        input2_data.append(annot["output2"])
+        output1_data.append(annot["output1"])
+        output2_data.append(annot["output2"])
         input_claims.append(annot["input_claim"])
 
         preference = annot["comparison"][0]["selected"] if "comparison" in annot and "selected" in annot["comparison"][0] else "draw"
@@ -44,7 +44,7 @@ def read_pairs(annotation_file, task="c2c"):
         else:
             human_rankings.append([1, 1])
 
-    return input1_data, input2_data, input_claims, human_rankings
+    return output1_data, output2_data, input_claims, human_rankings
   
 
 def get_ground_truths(ground_truths_file, task_name):
