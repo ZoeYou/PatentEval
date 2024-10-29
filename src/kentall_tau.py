@@ -107,12 +107,12 @@ def get_metric_rankings(output1_data, output2_data, input_claims, task_name, met
                 abstract2_embedding = model.encode("[abstract] "+abstract2)
 
                 # compute cosine-similarities for each sentence with each other sentence
-                cosine_scores1 = util.pytorch_cos_sim(claim_embedding, abstract1_embedding)[0]
-                cosine_scores2 = util.pytorch_cos_sim(claim_embedding, abstract2_embedding)[0]
+                cosine_score1 = util.pytorch_cos_sim(claim_embedding, abstract1_embedding)[0]
+                cosine_score2 = util.pytorch_cos_sim(claim_embedding, abstract2_embedding)[0]
 
-                if cosine_scores1 > cosine_scores2:
+                if cosine_score1 > cosine_score2:
                     rankings.append([1, 2])
-                elif cosine_scores1 < cosine_scores2:
+                elif cosine_score1 < cosine_score2:
                     rankings.append([2, 1])
                 else:
                     rankings.append([1, 1])
@@ -134,12 +134,12 @@ def get_metric_rankings(output1_data, output2_data, input_claims, task_name, met
                 output_claim2_embedding = model.encode("[claims] "+input_claims+"\n"+output_claim2)
 
                 # compute cosine-similarities for each sentence with each other sentence
-                cosine_scores1 = util.pytorch_cos_sim(claim_embedding, output_claim1_embedding)[0] * rule_based_score1
-                cosine_scores2 = util.pytorch_cos_sim(claim_embedding, output_claim2_embedding)[0] * rule_based_score2
+                cosine_score1 = util.pytorch_cos_sim(claim_embedding, output_claim1_embedding)[0] * rule_based_score1
+                cosine_score2 = util.pytorch_cos_sim(claim_embedding, output_claim2_embedding)[0] * rule_based_score2
 
-                if cosine_scores1 > cosine_scores2:
+                if cosine_score1 > cosine_score2:
                     rankings.append([1, 2])
-                elif cosine_scores1 < cosine_scores2:
+                elif cosine_score1 < cosine_score2:
                     rankings.append([2, 1])
                 else:
                     rankings.append([1, 1])
