@@ -1,4 +1,15 @@
-# rules for checking the validity of a generated claim given previous claims
+"""
+rules for checking the validity of a generated claim given previous claims
+the rules include:
+1. numbering coherence: check if the numbering of the generated claim is coherent with the input claims (e.g. input claims: [1, 2, 3, 4, 5], generated claim: 6, return True else False)
+2. dependency correctness: check if the dependency of the generated claim is correct as required (e.g. the generated claim should be dependent on existing claims, and the independent claim should not be dependent on existing claims, return True else False)
+3. punctuations correctness: check if the punctuations of the generated claim is correct as required (e.g. the generated claim should end with a comma after the preamble, return True else False)
+4. no hallucination: check if the generated claim is hallucinated (repetition of phrases over two times, return True else False)
+5. distinctive claim: check if the generated claim is distinctive (e.g. the generated claim should not be the same as the input claims, return True else False)
+
+the score of the generated claim is calculated as the number of True results divided by the total number of results
+the score is between 0 and 1
+"""
 import re
 
 
@@ -12,6 +23,9 @@ class Rule_based_checker(object):
         # extract the numberings of the input claims
         self.input_numberings = re.findall(r'[\s\n]?(\d+)[.)] ', self.input_claims)
         self.input_numberings = [int(numbering) for numbering in self.input_numberings if numbering != '']
+
+        # check if the input claims are not empty
+        assert len(self.input_claims) != 0 and len(self.input_numberings) != 0
 
 
     def numbering_coherence(self):
@@ -29,9 +43,6 @@ class Rule_based_checker(object):
 
         generated_numbering = int(generated_numbering[0]) if generated_numbering[0] != '' else int(generated_numbering[1])
 
-        # check if the input claims are not empty
-        assert len(self.input_claims) != 0 and len(self.input_numberings) != 0
-
         if generated_numbering != self.input_numberings[-1] + 1:
             return False
         return True
@@ -39,7 +50,7 @@ class Rule_based_checker(object):
 
     def dependency_correctness(self):
         """ 
-        check if the dependency of the generated claim is correct as required
+        check if the dependency of the generated claim is correct as required (the generated dependent claim should be dependent on existing claims, and the independent claim should not be dependent on existing claims)
         return True if the dependency is correct, False otherwise
         """
 
@@ -79,7 +90,11 @@ class Rule_based_checker(object):
         return True
     
     
-    def _befaft(self, s, words):  # splits at first occurrence of word from words
+    def _befaft(self, s, words):
+        """
+        function to split a string s into two parts before and after the words.
+        e.g. _befaft("This is a test", "is a") returns ["This ", "test"]
+        """
         reSplit = re.compile(
             r'(\b'+r'\b|\b'.join([w.replace('_', ' ') for w in words.split()])+r'\b)', re.I)
         return [t.strip() for t in (reSplit.split(s, maxsplit=1)+['', ''])[:3]]
@@ -87,7 +102,11 @@ class Rule_based_checker(object):
 
     def punctuations_correctness(self):
         """
-        check if the punctuations of the generated claim is correct as required
+        check if the punctuations of the generated claim is correct:
+        1. it should contain punctuations;
+        2. it should end with a period;
+        3. it should end with a comma after the preamble.
+
         return True if the punctuations is correct, False otherwise
         """
 
@@ -107,7 +126,7 @@ class Rule_based_checker(object):
 
 
     def _remove_repetitive_spans(self):
-        # Define a regular expression pattern to find repetitive spans of at least 2 repetitions.
+        # Define a regular expression pattern to find repetitive spans of at least 2 repetitions (2 or more.)
         pattern = r'(?<![A-Za-z0-9])(.{2,}?)\1{1,}(?![A-Za-z0-9])'
 
         # Use re.sub to remove all matching repetitive spans in the text, except for the first instance.
@@ -188,9 +207,3 @@ class Rule_based_checker(object):
                 if result:
                     score += 1
             return score / len(results)
-            
-
-
-        
-
-
